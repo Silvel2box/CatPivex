@@ -75,3 +75,17 @@ export interface Quote {
   delayed: boolean;
   error: ErrorBody | null;
 }
+
+// GET/PUT/DELETE /api/drawings/{symbol} all return this (DELETE -> drawings []).
+// PUT body: { drawings: [...] }. The backend stores the list as opaque JSON objects; the
+// frontend validates them on load (chart/drawings/geometry.ts sanitizeDrawings).
+export interface DrawingsResponse {
+  symbol: string;
+  drawings: unknown[];
+}
+
+// GET/PUT /api/layout. layout = null until first saved. PUT body: { layout: {...} } (opaque JSON
+// object; persist/layout.ts sanitizeLayout validates it on load).
+export interface LayoutResponse {
+  layout: Record<string, unknown> | null;
+}
