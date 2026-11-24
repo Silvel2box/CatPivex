@@ -1,5 +1,10 @@
 import type { ReactNode } from 'react';
-import type { DrawingType, DrawingWidth } from '../chart/drawings/types';
+import {
+  FIB_FILL_ALPHA,
+  FIB_FILL_OPTIONS,
+  type DrawingType,
+  type DrawingWidth,
+} from '../chart/drawings/types';
 import { useDrawingStore } from '../store/drawingStore';
 
 const ICON = 'h-5 w-5';
@@ -151,6 +156,22 @@ export function DrawingToolbar() {
               </option>
             ))}
           </select>
+          {selected.type === 'fib' && (
+            <select
+              data-testid="drawing-fill"
+              title="Background opacity (0% = no fill)"
+              aria-label="Background opacity"
+              value={selected.fill ?? FIB_FILL_ALPHA}
+              onChange={(e) => setStyle(selected.id, { fill: Number(e.target.value) })}
+              className="w-10 rounded border border-[#2a2e39] bg-[#131722] py-0.5 text-center text-[11px] text-[#d1d4dc] outline-none"
+            >
+              {FIB_FILL_OPTIONS.map((v) => (
+                <option key={v} value={v}>
+                  {Math.round(v * 100)}%
+                </option>
+              ))}
+            </select>
+          )}
           <button
             type="button"
             data-testid="drawing-delete"

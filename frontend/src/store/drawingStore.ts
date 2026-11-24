@@ -25,7 +25,8 @@ interface DrawingState {
   /** Replaces the drawing with the same id. */
   update: (d: Drawing) => void;
   remove: (id: string) => void;
-  setStyle: (id: string, style: { color?: string; width?: DrawingWidth }) => void;
+  /** `fill` applies to fib only (band opacity 0..1). */
+  setStyle: (id: string, style: { color?: string; width?: DrawingWidth; fill?: number }) => void;
   setMagnet: (on: boolean) => void;
 }
 
@@ -58,7 +59,11 @@ export const useDrawingStore = create<DrawingState>()((set) => ({
     })),
   setStyle: (id, style) =>
     set((s) => ({
-      drawings: s.drawings.map((x) => (x.id === id ? { ...x, ...style } : x)),
+      drawings: s.drawings.map((x) => {
+        if (x.id !== id) return x;
+        const { fill, ...rest } = style;
+        return x.type === 'fib' && fill !== undefined ? { ...x, ...rest, fill } : { ...x, ...rest };
+      }),
       rev: s.rev + 1,
     })),
   setMagnet: (magnet) => set({ magnet }),

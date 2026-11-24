@@ -52,6 +52,8 @@ export interface CatpivexDebug {
     shapes: { id: string; shape: PixelShape }[];
     /** Drawing under the mouse (handles shown). */
     hoveredId: string | null;
+    /** Aiming dot: where a click would place a point (tool active). */
+    ghost: { time: number; price: number } | null;
     /** Axis labels: every hline's price, plus the anchors of the selected/being-drawn drawing. */
     priceLabels: string[];
     timeLabels: string[];

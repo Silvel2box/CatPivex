@@ -351,3 +351,52 @@ describe('T4.8 sanitizeDrawings', () => {
     }
   });
 });
+
+describe('T4.13 fib aiming + fill', () => {
+  const c = (time: number, open: number, high: number, low: number, close: number): Candle => ({
+    time,
+    open,
+    high,
+    low,
+    close,
+    volume: 1,
+  });
+  const bars = [c(0, 10, 20, 5, 12), c(60, 12, 30, 11, 25)];
+
+  it("magnetSnap 'hl' picks only high/low, even when open/close is nearer", () => {
+    // Price 11.5 is nearest the bar-0 close (12), but 'hl' must choose between 20 and 5.
+    expect(magnetSnap({ time: 10, price: 11.5 }, bars, true, 'hl')).toEqual({ time: 0, price: 5 });
+    expect(magnetSnap({ time: 10, price: 17 }, bars, true, 'hl')).toEqual({ time: 0, price: 20 });
+    expect(magnetSnap({ time: 10, price: 11.5 }, bars, true)).toEqual({ time: 0, price: 12 });
+  });
+
+  it('handles use their own (bigger) tolerance; the body keeps the line tolerance', () => {
+    const s: PixelShape = { type: 'trendline', a: { x: 0, y: 0 }, b: { x: 200, y: 0 } };
+    expect(hitTestShape(s, 9, 0, 6, 10)).toBe('a'); // 9 px from a: a handle with tol 10
+    expect(hitTestShape(s, 9, 0, 6)).toBe('body'); // same point, handles at 6: the line
+    expect(hitTestShape(s, 0, 9, 6, 10)).toBe('a'); // off the line, within the handle radius
+    expect(hitTestShape(s, 0, 9, 6)).toBeNull();
+    expect(hitTestAll([{ id: 'x', shape: s }], 200, 9, 6, 10)).toEqual({ id: 'x', part: 'b' });
+  });
+
+  it('sanitizeDrawings keeps a valid fib fill and drops only an invalid one', () => {
+    const fib = {
+      id: 'f',
+      type: 'fib',
+      color: '#787b86',
+      width: 1,
+      a: { time: 0, price: 1 },
+      b: { time: 60, price: 2 },
+    };
+    expect(sanitizeDrawings([{ ...fib, fill: 0.35 }])[0]).toMatchObject({ fill: 0.35 });
+    expect(sanitizeDrawings([{ ...fib, fill: 0 }])[0]).toMatchObject({ fill: 0 });
+    for (const bad of [-0.1, 1.5, NaN, '0.3', null]) {
+      const [d] = sanitizeDrawings([{ ...fib, fill: bad }]);
+      expect(d).toBeDefined();
+      expect(d).not.toHaveProperty('fill');
+    }
+    // Only fibs carry a fill.
+    const [t] = sanitizeDrawings([{ ...fib, type: 'trendline', fill: 0.3 }]);
+    expect(t).not.toHaveProperty('fill');
+  });
+});

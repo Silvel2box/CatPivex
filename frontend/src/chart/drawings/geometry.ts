@@ -11,10 +11,15 @@ import {
 
 /**
  * Magnet (T4.2): snap to the bar nearest in time (ties -> the earlier bar), and to whichever of
- * its open/high/low/close is nearest to `anchor.price`. Returns `anchor` unchanged when
- * `enabled` is false or there are no bars.
+ * its open/high/low/close is nearest to `anchor.price` (`only: 'hl'` -> high/low only, for fib
+ * wick snapping). Returns `anchor` unchanged when `enabled` is false or there are no bars.
  */
-export function magnetSnap(anchor: Anchor, bars: Candle[], enabled: boolean): Anchor {
+export function magnetSnap(
+  anchor: Anchor,
+  bars: Candle[],
+  enabled: boolean,
+  only: 'ohlc' | 'hl' = 'ohlc',
+): Anchor {
   if (!enabled || bars.length === 0) return anchor;
   // First bar with time >= anchor.time (bars are ascending); its predecessor is the other candidate.
   let lo = 0;
@@ -32,8 +37,9 @@ export function magnetSnap(anchor: Anchor, bars: Candle[], enabled: boolean): An
     const after = bars[lo];
     bar = anchor.time - before.time <= after.time - anchor.time ? before : after;
   }
-  let price = bar.open;
-  for (const p of [bar.high, bar.low, bar.close]) {
+  const prices = only === 'hl' ? [bar.high, bar.low] : [bar.open, bar.high, bar.low, bar.close];
+  let price = prices[0];
+  for (const p of prices) {
     if (Math.abs(p - anchor.price) < Math.abs(price - anchor.price)) price = p;
   }
   return { time: bar.time, price };
@@ -70,6 +76,7 @@ export function hitTestShape(
   x: number,
   y: number,
   tol: number,
+  handleTol = tol,
 ): Hit['part'] | null {
   switch (shape.type) {
     case 'hline':
@@ -78,8 +85,8 @@ export function hitTestShape(
       return Math.abs(x - shape.x) <= tol ? 'body' : null;
   }
   const { a, b } = shape;
-  if (dist(a, x, y) <= tol) return 'a';
-  if (dist(b, x, y) <= tol) return 'b';
+  if (dist(a, x, y) <= handleTol) return 'a';
+  if (dist(b, x, y) <= handleTol) return 'b';
   switch (shape.type) {
     case 'trendline':
       return distToSegment(a, b, x, y) <= tol ? 'body' : null;
@@ -101,9 +108,10 @@ export function hitTestAll(
   x: number,
   y: number,
   tol: number,
+  handleTol = tol,
 ): Hit | null {
   for (let i = shapes.length - 1; i >= 0; i--) {
-    const part = hitTestShape(shapes[i].shape, x, y, tol);
+    const part = hitTestShape(shapes[i].shape, x, y, tol, handleTol);
     if (part) return { id: shapes[i].id, part };
   }
   return null;
@@ -175,11 +183,20 @@ function drawingOf(v: unknown): Drawing | null {
     case 'vline':
       return finite(v.time) ? { ...base, type, time: Math.round(v.time) } : null;
     case 'trendline':
-    case 'rect':
-    case 'fib': {
+    case 'rect': {
       const a = anchorOf(v.a);
       const b = anchorOf(v.b);
       return a && b ? { ...base, type, a, b } : null;
+    }
+    case 'fib': {
+      const a = anchorOf(v.a);
+      const b = anchorOf(v.b);
+      if (!a || !b) return null;
+      // An invalid fill only loses the fill (-> default), not the whole drawing.
+      const fill = v.fill;
+      return typeof fill === 'number' && fill >= 0 && fill <= 1
+        ? { ...base, type, a, b, fill }
+        : { ...base, type, a, b };
     }
     default:
       return null;

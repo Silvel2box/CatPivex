@@ -22,7 +22,9 @@ interface Base {
 export type Drawing =
   | (Base & { type: 'hline'; price: number })
   | (Base & { type: 'vline'; time: number })
-  | (Base & { type: 'trendline' | 'rect' | 'fib'; a: Anchor; b: Anchor });
+  | (Base & { type: 'trendline' | 'rect'; a: Anchor; b: Anchor })
+  /** fill = opacity (0..1) of the bands between levels; missing -> FIB_FILL_ALPHA. */
+  | (Base & { type: 'fib'; a: Anchor; b: Anchor; fill?: number });
 
 /** Anchor count per tool: 1 = one click, 2 = click start, click end. */
 export const ANCHOR_COUNT: Record<DrawingType, 1 | 2> = {
@@ -41,6 +43,14 @@ export const DEFAULT_COLOR: Record<DrawingType, string> = {
   fib: '#787b86', // the a–b diagonal; level lines use FIB_LEVELS colours
 };
 export const RECT_FILL_ALPHA = 0.2;
+export const FIB_FILL_ALPHA = 0.15;
+/** Choices for a fib's band opacity in the toolbar. */
+export const FIB_FILL_OPTIONS = [0, 0.05, 0.1, 0.15, 0.25, 0.35, 0.5] as const;
+/**
+ * Fib anchors snap to the nearest bar's high or low within this many px, even with the magnet
+ * off: a retracement is drawn from a swing high/low, i.e. a wick tip.
+ */
+export const FIB_WICK_SNAP_PX = 15;
 
 /**
  * Fibonacci retracement (TradingView convention): level 1 at anchor a (start of the drag),
@@ -84,5 +94,7 @@ export interface Hit {
   part: HitPart;
 }
 
-/** Hit tolerance in CSS px, for lines and anchor handles. */
+/** Hit tolerance in CSS px for lines and areas. */
 export const HIT_TOLERANCE = 6;
+/** Hit tolerance in CSS px for anchor handles (bigger: they are small targets you aim for). */
+export const HANDLE_TOLERANCE = 10;

@@ -6,6 +6,8 @@ import { hitTestAll, magnetSnap, moveDrawing } from './geometry';
 import {
   ANCHOR_COUNT,
   DEFAULT_COLOR,
+  FIB_WICK_SNAP_PX,
+  HANDLE_TOLERANCE,
   HIT_TOLERANCE,
   type Anchor,
   type Drawing,
@@ -30,6 +32,7 @@ const DRAG_FINISH_PX = 5;
  * within this many px of it; elsewhere the point follows the mouse exactly.
  */
 export const MAGNET_RADIUS_PX = 10;
+const GHOST_COLOR = '#2962ff';
 
 export function makeDrawing(tool: DrawingType, a: Anchor, b: Anchor, id = newDrawingId()): Drawing {
   const base = { id, color: DEFAULT_COLOR[tool], width: 1 as const };
@@ -52,6 +55,8 @@ export class DrawingController {
   private preview: Drawing | null = null;
   private drag: { orig: Drawing; part: HitPart; start: Anchor } | null = null;
   private hoveredId: string | null = null;
+  /** Where a click would place a point while a tool is active (null otherwise). */
+  private ghost: Anchor | null = null;
   private readonly cleanup: (() => void)[] = [];
   private readonly container: HTMLElement;
   private readonly chart: IChartApi;
@@ -90,6 +95,7 @@ export class DrawingController {
           prevTool = s.tool;
           this.pending = null;
           this.preview = null;
+          this.ghost = null;
         }
         this.render();
       }),
@@ -103,7 +109,14 @@ export class DrawingController {
 
   private render(): void {
     const s = useDrawingStore.getState();
-    this.primitive.setDrawings(s.drawings, s.selectedId, this.preview, this.hoveredId);
+    this.primitive.setState({
+      drawings: s.drawings,
+      selectedId: s.selectedId,
+      preview: this.preview,
+      hoveredId: this.hoveredId,
+      // One readable accent for the aiming dot and its axis labels (fib's own colour is grey).
+      ghost: this.ghost && s.tool ? { anchor: this.ghost, color: GHOST_COLOR } : null,
+    });
   }
 
   /** Pane-relative point, or null outside the candle pane (price axis, sub-panes, time axis). */
@@ -115,14 +128,27 @@ export class DrawingController {
     return p.x >= 0 && p.y >= 0 && p.x < width && p.y < height ? p : null;
   }
 
-  private anchorAt(p: Point, snap: boolean): Anchor | null {
+  /**
+   * Anchor under (x, y). With `snap`: a fib point (`wick`) first snaps to a high/low within
+   * FIB_WICK_SNAP_PX, magnet or not; then the weak magnet (if on) to an O/H/L/C within
+   * MAGNET_RADIUS_PX; otherwise the point is exactly where the mouse is.
+   */
+  private anchorAt(p: Point, snap: boolean, wick = false): Anchor | null {
     const raw = this.primitive.toAnchor(p.x, p.y);
-    if (!raw || !snap || !useDrawingStore.getState().magnet) return raw;
-    const snapped = magnetSnap(raw, this.getBars(), true);
-    const x = this.primitive.timeToX(snapped.time);
-    const y = this.primitive.priceToY(snapped.price);
-    if (x === null || y === null) return raw;
-    return Math.hypot(x - p.x, y - p.y) <= MAGNET_RADIUS_PX ? snapped : raw;
+    if (!raw || !snap) return raw;
+    const within = (s: Anchor, radius: number) => {
+      const x = this.primitive.timeToX(s.time);
+      const y = this.primitive.priceToY(s.price);
+      return x !== null && y !== null && Math.hypot(x - p.x, y - p.y) <= radius;
+    };
+    const bars = this.getBars();
+    if (wick) {
+      const w = magnetSnap(raw, bars, true, 'hl');
+      if (within(w, FIB_WICK_SNAP_PX)) return w;
+    }
+    if (!useDrawingStore.getState().magnet) return raw;
+    const s = magnetSnap(raw, bars, true);
+    return within(s, MAGNET_RADIUS_PX) ? s : raw;
   }
 
   private onDown(e: MouseEvent): void {
@@ -135,8 +161,9 @@ export class DrawingController {
       e.stopPropagation();
       e.preventDefault();
       if (store.loading) return;
-      const a = this.anchorAt(p, true);
+      const a = this.anchorAt(p, true, (this.pending?.tool ?? store.tool) === 'fib');
       if (!a) return;
+      this.ghost = null;
       if (this.pending) {
         this.finish(a);
       } else if (ANCHOR_COUNT[store.tool] === 1) {
@@ -149,7 +176,7 @@ export class DrawingController {
       return;
     }
 
-    const hit = hitTestAll(this.primitive.shapes(), p.x, p.y, HIT_TOLERANCE);
+    const hit = hitTestAll(this.primitive.shapes(), p.x, p.y, HIT_TOLERANCE, HANDLE_TOLERANCE);
     if (!hit) {
       if (store.selectedId) store.select(null);
       return; // the chart pans as usual
@@ -170,7 +197,7 @@ export class DrawingController {
     const r = this.container.getBoundingClientRect();
     const p = { x: e.clientX - r.left, y: e.clientY - r.top }; // may leave the pane mid-drag
     if (this.pending) {
-      const b = this.anchorAt(p, true);
+      const b = this.anchorAt(p, true, this.pending.tool === 'fib');
       if (!b) return;
       this.preview = makeDrawing(this.pending.tool, this.pending.a, b, 'preview');
       this.render();
@@ -178,16 +205,29 @@ export class DrawingController {
     }
     const drag = this.drag!;
     const cur = this.anchorAt(p, false);
-    const to = this.anchorAt(p, true);
+    const to = this.anchorAt(p, true, drag.orig.type === 'fib' && drag.part !== 'body');
     if (!cur || !to) return;
     const delta = { dTime: cur.time - drag.start.time, dPrice: cur.price - drag.start.price };
     useDrawingStore.getState().update(moveDrawing(drag.orig, drag.part, delta, to));
   }
 
-  /** Highlight (handles / halo) the drawing under the mouse; re-render only when it changes. */
+  /**
+   * No button pressed. With a tool active: move the aiming dot (snapped exactly like a click
+   * would be). Otherwise: highlight the drawing under the mouse. Re-render only on change.
+   */
   private updateHover(e: MouseEvent): void {
-    const p = useDrawingStore.getState().tool ? null : this.local(e);
-    const hit = p ? hitTestAll(this.primitive.shapes(), p.x, p.y, HIT_TOLERANCE) : null;
+    const tool = useDrawingStore.getState().tool;
+    const p = this.local(e);
+    if (tool) {
+      const g = p ? this.anchorAt(p, true, tool === 'fib') : null;
+      if (g?.time === this.ghost?.time && g?.price === this.ghost?.price) return;
+      this.ghost = g;
+      this.render();
+      return;
+    }
+    const hit = p
+      ? hitTestAll(this.primitive.shapes(), p.x, p.y, HIT_TOLERANCE, HANDLE_TOLERANCE)
+      : null;
     const id = hit?.id ?? null;
     if (id === this.hoveredId) return;
     this.hoveredId = id;
@@ -202,7 +242,7 @@ export class DrawingController {
     const p = { x: e.clientX - r.left, y: e.clientY - r.top };
     const { downAt } = this.pending;
     if (Math.hypot(p.x - downAt.x, p.y - downAt.y) <= DRAG_FINISH_PX) return; // click: wait for 2nd
-    const b = this.anchorAt(p, true);
+    const b = this.anchorAt(p, true, this.pending.tool === 'fib');
     if (b) this.finish(b);
   }
 

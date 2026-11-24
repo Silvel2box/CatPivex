@@ -3,10 +3,19 @@ import { expect, test, type Page } from './fixtures';
 import { addIndicators, openApp, waitLoaded } from './phase3-helpers';
 
 type Anchor = { time: number; price: number };
-type Drawing = { id: string; type: string; price?: number; time?: number; a?: Anchor; b?: Anchor };
+type Drawing = {
+  id: string;
+  type: string;
+  price?: number;
+  time?: number;
+  a?: Anchor;
+  b?: Anchor;
+  fill?: number;
+};
 type Shape = { type: string; x?: number; y?: number; a?: { x: number; y: number }; b?: { x: number; y: number }; levelYs?: number[] };
 type DrawState = {
   hoveredId: string | null;
+  ghost: Anchor | null;
   priceLabels: string[];
   timeLabels: string[];
   symbol: string | null;
@@ -343,4 +352,64 @@ test('T4.12 hover shows handles; anchor labels on both axes; clicking inside a f
   // Mouse away: no hover.
   await page.mouse.move(box.x + box.width * 0.05, box.y + box.height * 0.95);
   await expect.poll(async () => (await draws(page)).hoveredId).toBe(null);
+});
+
+test('T4.13 fib aiming: dot before the click, wick snap (magnet off), big handles, background opacity', async ({
+  page,
+}) => {
+  const bars = await candles(page, BTC, '1m');
+  type Bar = (typeof bars)[number];
+  const pick = (from: Bar[], score: (c: Bar) => number) =>
+    from.reduce((best, c) => (score(c) > score(best) ? c : best));
+  // Long wicks, so the tip is clearly apart from open/close on screen.
+  const top = pick(bars.slice(-70, -45), (c) => c.high - Math.max(c.open, c.close));
+  const bottom = pick(bars.slice(-35, -10), (c) => Math.min(c.open, c.close) - c.low);
+  expect((await draws(page)).magnet).toBe(false);
+
+  // No tool: no aiming dot.
+  const hi = await at(page, top.time, top.high);
+  await page.mouse.move(hi.x, hi.y + 10);
+  expect((await draws(page)).ghost).toBeNull();
+
+  // Fib tool: 10 px below the wick tip, the dot already sits on the high.
+  await page.keyboard.press('Alt+F');
+  await page.mouse.move(hi.x + 2, hi.y + 10);
+  await expect.poll(async () => (await draws(page)).ghost).toEqual({ time: top.time, price: top.high });
+  expect((await draws(page)).priceLabels).toHaveLength(1); // the dot's price on the axis
+  await page.mouse.click(hi.x + 2, hi.y + 10);
+  const lo = await at(page, bottom.time, bottom.low);
+  await page.mouse.click(lo.x - 2, lo.y - 9);
+  await expect.poll(async () => (await draws(page)).drawings.length).toBe(1);
+  const fib = (await draws(page)).drawings[0]!;
+  expect(fib.a).toEqual({ time: top.time, price: top.high });
+  expect(fib.b).toEqual({ time: bottom.time, price: bottom.low });
+
+  // Wick snap is for fib only: an hline at the same offset stays where the mouse is.
+  await page.keyboard.press('Alt+H');
+  await page.mouse.click(hi.x + 2, hi.y + 10);
+  await expect.poll(async () => (await draws(page)).drawings.length).toBe(2);
+  expect((await draws(page)).drawings[1]!.price).toBeLessThan(top.high);
+  await page.keyboard.press('Delete'); // the new hline is selected
+
+  // Grab end point a from 8.5 px away (outside the old 6 px) and drag it: only a moves.
+  await page.keyboard.press('Escape');
+  const box = (await page.getByTestId('chart').boundingBox())!;
+  const shapeA = (await draws(page)).shapes[0]!.shape.a!;
+  await page.mouse.move(box.x + shapeA.x + 6, box.y + shapeA.y - 6);
+  await page.mouse.down();
+  await page.mouse.move(box.x + shapeA.x - 60, box.y + shapeA.y - 30, { steps: 6 });
+  await page.mouse.up();
+  const moved = (await draws(page)).drawings[0]!;
+  expect(moved.a!.time).toBeLessThan(fib.a!.time);
+  expect(moved.b).toEqual(fib.b);
+
+  // Background opacity: selected fib -> 50%, saved, and back after reload.
+  await expect.poll(async () => (await draws(page)).selectedId).toBe(fib.id);
+  await page.getByTestId('drawing-fill').selectOption('0.5');
+  await expect.poll(async () => (await draws(page)).drawings[0]!.fill).toBe(0.5);
+  await expect.poll(async () => (await savedDrawings(page, BTC))[0]?.fill).toBe(0.5);
+  await page.reload();
+  await page.waitForFunction(() => (window as unknown as Partial<W>).__catpivex !== undefined);
+  await waitDrawingsLoaded(page, BTC);
+  expect((await draws(page)).drawings[0]!.fill).toBe(0.5);
 });

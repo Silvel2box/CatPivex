@@ -13,7 +13,9 @@ import type { Candle } from '../../api/types';
 import { logicalToTime, logicalToX, timeToLogical, xToLogical, type ScaleLike } from './coords';
 import { fibPrices, hitTestAll } from './geometry';
 import {
+  FIB_FILL_ALPHA,
   FIB_LEVELS,
+  HANDLE_TOLERANCE,
   HIT_TOLERANCE,
   RECT_FILL_ALPHA,
   type Anchor,
@@ -29,7 +31,6 @@ export interface Projected {
 }
 
 const HANDLE_RADIUS = 5;
-const FIB_FILL_ALPHA = 0.12;
 
 /** A label on the price or time axis. */
 interface AxisLabel {
@@ -57,6 +58,8 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
   private selectedId: string | null = null;
   private hoveredId: string | null = null;
   private preview: Drawing | null = null;
+  /** Where the next click would place a point (tool active, nothing clicked yet). */
+  private ghost: { anchor: Anchor; color: string } | null = null;
   private projected: Projected[] = [];
   private readonly views: IPrimitivePaneView[];
   private priceLabels: AxisLabel[] = [];
@@ -85,16 +88,18 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     this.requestUpdate = null;
   }
 
-  setDrawings(
-    drawings: Drawing[],
-    selectedId: string | null,
-    preview: Drawing | null,
-    hoveredId: string | null = null,
-  ): void {
-    this.drawings = drawings;
-    this.selectedId = selectedId;
-    this.preview = preview;
-    this.hoveredId = hoveredId;
+  setState(s: {
+    drawings: Drawing[];
+    selectedId: string | null;
+    preview: Drawing | null;
+    hoveredId: string | null;
+    ghost: { anchor: Anchor; color: string } | null;
+  }): void {
+    this.drawings = s.drawings;
+    this.selectedId = s.selectedId;
+    this.preview = s.preview;
+    this.hoveredId = s.hoveredId;
+    this.ghost = s.ghost;
     this.requestUpdate?.();
   }
 
@@ -117,7 +122,7 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
 
   /** Cursor over a drawing (the controller does the actual selecting / dragging). */
   hitTest(x: number, y: number): PrimitiveHoveredItem | null {
-    const hit = hitTestAll(this.shapes(), x, y, HIT_TOLERANCE);
+    const hit = hitTestAll(this.shapes(), x, y, HIT_TOLERANCE, HANDLE_TOLERANCE);
     if (!hit) return null;
     return {
       externalId: hit.id,
@@ -164,9 +169,15 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
   }
 
   /** Dev hook: what is highlighted and which axis labels are showing. */
-  debug(): { hoveredId: string | null; priceLabels: string[]; timeLabels: string[] } {
+  debug(): {
+    hoveredId: string | null;
+    ghost: Anchor | null;
+    priceLabels: string[];
+    timeLabels: string[];
+  } {
     return {
       hoveredId: this.hoveredId,
+      ghost: this.ghost?.anchor ?? null,
       priceLabels: this.priceLabels.map((l) => l.text),
       timeLabels: this.timeLabels.map((l) => l.text),
     };
@@ -245,6 +256,11 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
         }
       }
     }
+    const g = this.ghostPoint();
+    if (g && this.ghost) {
+      prices.push({ coord: g.y, text: price(this.ghost.anchor.price), color: this.ghost.color });
+      times.push({ coord: g.x, text: time(this.ghost.anchor.time), color: this.ghost.color });
+    }
     this.priceLabels = prices;
     this.timeLabels = times;
     // Same view objects while the count is unchanged (the library caches by array identity).
@@ -254,6 +270,10 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     if (this.timeViews.length !== times.length) {
       this.timeViews = times.map((_, i) => this.axisView(() => this.timeLabels[i]));
     }
+  }
+
+  private ghostPoint(): Point | null {
+    return this.ghost ? this.point(this.ghost.anchor) : null;
   }
 
   private axisView(get: () => AxisLabel | undefined): ISeriesPrimitiveAxisView {
@@ -270,6 +290,8 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     const items = this.projected;
     const selectedId = this.selectedId;
     const hoveredId = this.hoveredId;
+    const ghost = this.ghostPoint();
+    const ghostColor = this.ghost?.color ?? '#2962ff';
     const format = (p: number) => this.series?.priceFormatter().format(p) ?? String(p);
     return {
       draw: (target) => {
@@ -307,7 +329,7 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
                 for (let i = 0; i + 1 < FIB_LEVELS.length; i++) {
                   const y0 = shape.levelYs[i];
                   const y1 = shape.levelYs[i + 1];
-                  ctx.fillStyle = withAlpha(FIB_LEVELS[i + 1].color, FIB_FILL_ALPHA);
+                  ctx.fillStyle = withAlpha(FIB_LEVELS[i + 1].color, d.fill ?? FIB_FILL_ALPHA);
                   ctx.fillRect(x0, Math.min(y0, y1), x1 - x0, Math.abs(y1 - y0));
                 }
                 ctx.font = LABEL_FONT;
@@ -348,6 +370,15 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
               if (shape.type === 'vline') line(ctx, shape.x, 0, shape.x, mediaSize.height);
             }
             ctx.restore();
+          }
+          if (ghost) {
+            ctx.beginPath();
+            ctx.arc(ghost.x, ghost.y, HANDLE_RADIUS - 1, 0, Math.PI * 2);
+            ctx.fillStyle = ghostColor;
+            ctx.fill();
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
           }
         });
       },
