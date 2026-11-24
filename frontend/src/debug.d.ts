@@ -50,6 +50,11 @@ export interface CatpivexDebug {
     magnet: boolean;
     drawings: Drawing[];
     shapes: { id: string; shape: PixelShape }[];
+    /** Drawing under the mouse (handles shown). */
+    hoveredId: string | null;
+    /** Axis labels: every hline's price, plus the anchors of the selected/being-drawn drawing. */
+    priceLabels: string[];
+    timeLabels: string[];
   };
   /** x for any time (interpolated between bars), pane px; null without data. */
   timeToX(time: number): number | null;

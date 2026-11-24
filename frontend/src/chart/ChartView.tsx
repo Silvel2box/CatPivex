@@ -134,6 +134,7 @@ export function ChartView() {
             magnet: s.magnet,
             drawings: s.drawings,
             shapes: drawings.shapes(),
+            ...drawings.debug(),
           };
         },
         timeToX: (time) => drawings.timeToX(time),

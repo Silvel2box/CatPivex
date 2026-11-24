@@ -28,7 +28,15 @@ export interface Projected {
   shape: PixelShape;
 }
 
-const HANDLE_RADIUS = 4;
+const HANDLE_RADIUS = 5;
+const FIB_FILL_ALPHA = 0.12;
+
+/** A label on the price or time axis. */
+interface AxisLabel {
+  coord: number;
+  text: string;
+  color: string;
+}
 const LABEL_FONT = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
 
 function withAlpha(hex: string, alpha: number): string {
@@ -47,11 +55,14 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
   private requestUpdate: (() => void) | null = null;
   private drawings: Drawing[] = [];
   private selectedId: string | null = null;
+  private hoveredId: string | null = null;
   private preview: Drawing | null = null;
   private projected: Projected[] = [];
   private readonly views: IPrimitivePaneView[];
-  private axisViews: ISeriesPrimitiveAxisView[] = [];
-  private axisViewIds: string[] = [];
+  private priceLabels: AxisLabel[] = [];
+  private timeLabels: AxisLabel[] = [];
+  private priceViews: ISeriesPrimitiveAxisView[] = [];
+  private timeViews: ISeriesPrimitiveAxisView[] = [];
   private timesCache: { bars: Candle[]; length: number; times: number[] } | null = null;
   private readonly getBars: () => Candle[];
   private readonly getIntervalSec: () => number;
@@ -74,30 +85,34 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     this.requestUpdate = null;
   }
 
-  setDrawings(drawings: Drawing[], selectedId: string | null, preview: Drawing | null): void {
+  setDrawings(
+    drawings: Drawing[],
+    selectedId: string | null,
+    preview: Drawing | null,
+    hoveredId: string | null = null,
+  ): void {
     this.drawings = drawings;
     this.selectedId = selectedId;
     this.preview = preview;
+    this.hoveredId = hoveredId;
     this.requestUpdate?.();
   }
 
   updateAllViews(): void {
     this.projected = this.project();
-    const lines = this.projected.filter((p) => p.drawing.type === 'hline');
-    if (
-      lines.length !== this.axisViews.length ||
-      lines.some((p, i) => this.axisViewIds[i] !== p.id)
-    ) {
-      this.axisViewIds = lines.map((p) => p.id);
-      this.axisViews = lines.map((p) => this.priceLabel(p.id));
-    }
+    this.updateAxisLabels();
   }
+
   paneViews(): readonly IPrimitivePaneView[] {
     return this.views;
   }
 
   priceAxisViews(): readonly ISeriesPrimitiveAxisView[] {
-    return this.axisViews;
+    return this.priceViews;
+  }
+
+  timeAxisViews(): readonly ISeriesPrimitiveAxisView[] {
+    return this.timeViews;
   }
 
   /** Cursor over a drawing (the controller does the actual selecting / dragging). */
@@ -148,6 +163,20 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     return times;
   }
 
+  /** Dev hook: what is highlighted and which axis labels are showing. */
+  debug(): { hoveredId: string | null; priceLabels: string[]; timeLabels: string[] } {
+    return {
+      hoveredId: this.hoveredId,
+      priceLabels: this.priceLabels.map((l) => l.text),
+      timeLabels: this.timeLabels.map((l) => l.text),
+    };
+  }
+
+  /** y of a price on the candle pane; null without data. */
+  priceToY(price: number): number | null {
+    return this.y(price);
+  }
+
   private y(price: number): number | null {
     return this.series?.priceToCoordinate(price) ?? null;
   }
@@ -187,26 +216,60 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     return out;
   }
 
-  private priceLabel(id: string): ISeriesPrimitiveAxisView {
-    const current = () => this.projected.find((p) => p.id === id);
+  /**
+   * Price-axis labels for every hline, plus price and time labels at the anchors of the drawing
+   * being drawn or the selected one, so you can place a point at an exact price/time.
+   */
+  private updateAxisLabels(): void {
+    const price = (p: number) => this.series?.priceFormatter().format(p) ?? String(p);
+    const timeFmt = this.chart?.options().localization.timeFormatter;
+    const time = (t: number) => (timeFmt ? timeFmt(t as Time) : String(t));
+    const prices: AxisLabel[] = [];
+    const times: AxisLabel[] = [];
+    const active = this.preview?.id ?? this.selectedId;
+    for (const { drawing: d, shape } of this.projected) {
+      if (shape.type === 'hline' && d.type === 'hline') {
+        prices.push({ coord: shape.y, text: price(d.price), color: d.color });
+      }
+      if (d.id !== active) continue;
+      if (shape.type === 'vline' && d.type === 'vline') {
+        times.push({ coord: shape.x, text: time(d.time), color: d.color });
+      }
+      if ('a' in shape && 'a' in d) {
+        for (const [p, anchor] of [
+          [shape.a, d.a],
+          [shape.b, d.b],
+        ] as const) {
+          prices.push({ coord: p.y, text: price(anchor.price), color: d.color });
+          times.push({ coord: p.x, text: time(anchor.time), color: d.color });
+        }
+      }
+    }
+    this.priceLabels = prices;
+    this.timeLabels = times;
+    // Same view objects while the count is unchanged (the library caches by array identity).
+    if (this.priceViews.length !== prices.length) {
+      this.priceViews = prices.map((_, i) => this.axisView(() => this.priceLabels[i]));
+    }
+    if (this.timeViews.length !== times.length) {
+      this.timeViews = times.map((_, i) => this.axisView(() => this.timeLabels[i]));
+    }
+  }
+
+  private axisView(get: () => AxisLabel | undefined): ISeriesPrimitiveAxisView {
     return {
-      coordinate: () => {
-        const s = current()?.shape;
-        return s?.type === 'hline' ? s.y : -100;
-      },
-      text: () => {
-        const d = current()?.drawing;
-        return d?.type === 'hline' ? (this.series?.priceFormatter().format(d.price) ?? '') : '';
-      },
+      coordinate: () => get()?.coord ?? -100,
+      text: () => get()?.text ?? '',
       textColor: () => '#ffffff',
-      backColor: () => current()?.drawing.color ?? '#2962ff',
-      visible: () => current() !== undefined,
+      backColor: () => get()?.color ?? '#2962ff',
+      visible: () => get() !== undefined,
     };
   }
 
   private renderer(): IPrimitivePaneRenderer {
     const items = this.projected;
     const selectedId = this.selectedId;
+    const hoveredId = this.hoveredId;
     const format = (p: number) => this.series?.priceFormatter().format(p) ?? String(p);
     return {
       draw: (target) => {
@@ -240,6 +303,13 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
                 const x0 = Math.min(shape.a.x, shape.b.x);
                 const x1 = Math.max(shape.a.x, shape.b.x);
                 const prices = fibPrices(d.a, d.b);
+                // Filled bands between levels (each in the colour of its upper level).
+                for (let i = 0; i + 1 < FIB_LEVELS.length; i++) {
+                  const y0 = shape.levelYs[i];
+                  const y1 = shape.levelYs[i + 1];
+                  ctx.fillStyle = withAlpha(FIB_LEVELS[i + 1].color, FIB_FILL_ALPHA);
+                  ctx.fillRect(x0, Math.min(y0, y1), x1 - x0, Math.abs(y1 - y0));
+                }
                 ctx.font = LABEL_FONT;
                 ctx.textBaseline = 'bottom';
                 FIB_LEVELS.forEach(({ level, color }, i) => {
@@ -258,19 +328,21 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
                 break;
               }
             }
-            if (d.id === selectedId && 'a' in shape) {
-              ctx.lineWidth = 1.5;
+            // Handles on the selected drawing and on the one under the mouse.
+            const marked = d.id === selectedId || d.id === hoveredId;
+            if (marked && 'a' in shape) {
+              ctx.lineWidth = 2;
               ctx.strokeStyle = d.color;
-              ctx.fillStyle = '#131722';
+              ctx.fillStyle = d.id === selectedId ? '#ffffff' : '#131722';
               for (const p of [shape.a, shape.b]) {
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, HANDLE_RADIUS, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.stroke();
               }
-            } else if (d.id === selectedId) {
-              // hline / vline: a thicker translucent halo marks the selection.
-              ctx.strokeStyle = withAlpha(d.color, 0.35);
+            } else if (marked) {
+              // hline / vline: a translucent halo (stronger when selected).
+              ctx.strokeStyle = withAlpha(d.color, d.id === selectedId ? 0.35 : 0.2);
               ctx.lineWidth = d.width + 6;
               if (shape.type === 'hline') line(ctx, 0, shape.y, mediaSize.width, shape.y);
               if (shape.type === 'vline') line(ctx, shape.x, 0, shape.x, mediaSize.height);

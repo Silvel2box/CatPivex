@@ -37,7 +37,7 @@ export const useDrawingStore = create<DrawingState>()((set) => ({
   drawings: [],
   selectedId: null,
   tool: null,
-  magnet: true,
+  magnet: false,
   rev: 0,
 
   startLoading: (symbol) =>

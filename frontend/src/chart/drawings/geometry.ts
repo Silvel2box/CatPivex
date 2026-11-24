@@ -52,10 +52,18 @@ function distToSegment(a: Point, b: Point, x: number, y: number): number {
   return Math.hypot(x - (a.x + t * dx), y - (a.y + t * dy));
 }
 
+/** Distance from (x, y) to the filled box with corners (x0, y0), (x1, y1): 0 inside. */
+function distToBox(x0: number, y0: number, x1: number, y1: number, x: number, y: number): number {
+  const dx = Math.max(Math.min(x0, x1) - x, 0, x - Math.max(x0, x1));
+  const dy = Math.max(Math.min(y0, y1) - y, 0, y - Math.max(y0, y1));
+  return Math.hypot(dx, dy);
+}
+
 /**
  * Hit-test one shape (T4.3). Anchor handles (a/b, within `tol` px of the point) win over the
  * body. Body: within `tol` px of an hline/vline, of the trendline segment, of a rect edge or
- * anywhere inside the rect, of a fib level line (within its x span) or of the fib a–b diagonal.
+ * anywhere inside the rect, anywhere in the fib's filled area (x span × level-0..level-1, plus
+ * `tol`) or within `tol` of the fib a–b diagonal.
  */
 export function hitTestShape(
   shape: PixelShape,
@@ -75,20 +83,14 @@ export function hitTestShape(
   switch (shape.type) {
     case 'trendline':
       return distToSegment(a, b, x, y) <= tol ? 'body' : null;
-    case 'rect': {
-      // Distance to the filled rectangle: 0 inside, else to the nearest edge.
-      const dx = Math.max(Math.min(a.x, b.x) - x, 0, x - Math.max(a.x, b.x));
-      const dy = Math.max(Math.min(a.y, b.y) - y, 0, y - Math.max(a.y, b.y));
-      return Math.hypot(dx, dy) <= tol ? 'body' : null;
-    }
+    case 'rect':
+      return distToBox(a.x, a.y, b.x, b.y, x, y) <= tol ? 'body' : null;
     case 'fib': {
+      // The bands between levels are filled, so the whole area grabs the fib (like TradingView).
       if (distToSegment(a, b, x, y) <= tol) return 'body';
-      const x0 = Math.min(a.x, b.x);
-      const x1 = Math.max(a.x, b.x);
-      for (const ly of shape.levelYs) {
-        if (distToSegment({ x: x0, y: ly }, { x: x1, y: ly }, x, y) <= tol) return 'body';
-      }
-      return null;
+      const ys = shape.levelYs;
+      if (ys.length === 0) return null;
+      return distToBox(a.x, Math.min(...ys), b.x, Math.max(...ys), x, y) <= tol ? 'body' : null;
     }
   }
 }

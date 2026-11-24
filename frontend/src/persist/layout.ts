@@ -24,7 +24,7 @@ export const DEFAULT_LAYOUT: Layout = {
   interval: '1m',
   indicators: [],
   volumeVisible: true,
-  magnet: true,
+  magnet: false, // weak magnet, off by default like TradingView
 };
 
 const SYMBOL_RE = /^[A-Z]+:[A-Z0-9.=^-]+$/;

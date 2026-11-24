@@ -6,6 +6,9 @@ type Anchor = { time: number; price: number };
 type Drawing = { id: string; type: string; price?: number; time?: number; a?: Anchor; b?: Anchor };
 type Shape = { type: string; x?: number; y?: number; a?: { x: number; y: number }; b?: { x: number; y: number }; levelYs?: number[] };
 type DrawState = {
+  hoveredId: string | null;
+  priceLabels: string[];
+  timeLabels: string[];
   symbol: string | null;
   loading: boolean;
   tool: string | null;
@@ -80,8 +83,7 @@ test('T4.6 draw on 1h → switch to 1D → reload: anchors, drawings, indicators
   await page.getByTestId('tf-1h').click();
   await waitLoaded(page, '1h');
   await addIndicators(page, ['sma']);
-  await page.getByTestId('magnet-toggle').click(); // off: anchors exactly where we click
-  await expect.poll(async () => (await draws(page)).magnet).toBe(false);
+  expect((await draws(page)).magnet).toBe(false); // default off: anchors exactly where we click
 
   const bars = await candles(page, BTC, '1h');
   const i = bars.length - 40;
@@ -102,6 +104,8 @@ test('T4.6 draw on 1h → switch to 1D → reload: anchors, drawings, indicators
 
   await expect.poll(async () => (await draws(page)).drawings.length).toBe(2);
   const drawn = (await draws(page)).drawings;
+  await page.getByTestId('magnet-toggle').click(); // the magnet setting is part of the layout
+  await expect.poll(async () => (await draws(page)).magnet).toBe(true);
   const trend = drawn.find((d) => d.type === 'trendline')!;
   // The click landed on the intended anchor (pixel rounding: well under one 1h bar).
   expect(Math.abs(trend.a!.time - tA)).toBeLessThan(3600);
@@ -135,7 +139,7 @@ test('T4.6 draw on 1h → switch to 1D → reload: anchors, drawings, indicators
   await waitLoaded(page, '1D');
   await waitDrawingsLoaded(page, BTC);
   expect((await draws(page)).drawings).toEqual(drawn);
-  expect((await draws(page)).magnet).toBe(false);
+  expect((await draws(page)).magnet).toBe(true);
   const st = await page.evaluate(() => (window as unknown as W).__catpivex.state());
   expect(st).toMatchObject({ symbol: BTC, interval: '1D' });
   const inds = await page.evaluate(() => (window as unknown as W).__catpivex.indicators());
@@ -211,8 +215,7 @@ test('T4.9 fib (drag to draw) and dragging a drawing moves it without panning th
   const bars = await candles(page, BTC, '1m');
   const lo = bars[bars.length - 60]!;
   const hi = bars[bars.length - 20]!;
-  await page.getByTestId('magnet-toggle').click();
-  await expect.poll(async () => (await draws(page)).magnet).toBe(false);
+  expect((await draws(page)).magnet).toBe(false);
 
   // Fib by press-drag-release from the toolbar.
   const a = await at(page, lo.time, lo.low);
@@ -258,4 +261,86 @@ test('T4.9 fib (drag to draw) and dragging a drawing moves it without panning th
   await page.mouse.up();
   const xRefPanned = await page.evaluate((t) => (window as unknown as W).__catpivex.timeToX(t), ref);
   expect(Math.abs(xRefPanned! - xRefBefore!)).toBeGreaterThan(50);
+});
+
+test('T4.11 weak magnet: snaps only within 10 px of an O/H/L/C, otherwise follows the mouse', async ({
+  page,
+}) => {
+  const bars = await candles(page, BTC, '1m');
+  // The bar with the longest upper wick among recent ones, so its high is clearly apart from
+  // its open/close on screen (otherwise "nearest O/H/L/C" may rightly be the close).
+  const bar = bars
+    .slice(-60, -10)
+    .reduce((best, c) =>
+      c.high - Math.max(c.open, c.close) > best.high - Math.max(best.open, best.close) ? c : best,
+    );
+  const wickPx = await page.evaluate(
+    ([h, top]) => {
+      const hk = (window as unknown as W).__catpivex;
+      return hk.priceToY(top)! - hk.priceToY(h)!;
+    },
+    [bar.high, Math.max(bar.open, bar.close)],
+  );
+  expect(wickPx).toBeGreaterThan(15);
+  await page.getByTestId('magnet-toggle').click();
+  await expect.poll(async () => (await draws(page)).magnet).toBe(true);
+
+  // 5 px below the bar's high (and the high is the nearest of its O/H/L/C): snaps to the high.
+  const near = await at(page, bar.time, bar.high);
+  await page.keyboard.press('Alt+H');
+  await page.mouse.click(near.x, near.y + 5);
+  await expect.poll(async () => (await draws(page)).drawings.length).toBe(1);
+  expect((await draws(page)).drawings[0]!.price).toBe(bar.high);
+
+  // 40 px above the high (beyond the radius): the price is wherever the mouse is, not an OHLC.
+  await page.keyboard.press('Alt+H');
+  await page.mouse.click(near.x, near.y - 40);
+  await expect.poll(async () => (await draws(page)).drawings.length).toBe(2);
+  const free = (await draws(page)).drawings[1]!.price!;
+  expect([bar.open, bar.high, bar.low, bar.close]).not.toContain(free);
+  expect(free).toBeGreaterThan(bar.high);
+});
+
+test('T4.12 hover shows handles; anchor labels on both axes; clicking inside a fib band selects it', async ({
+  page,
+}) => {
+  const bars = await candles(page, BTC, '1m');
+  const lo = bars[bars.length - 70]!;
+  const hi = bars[bars.length - 30]!;
+  const a = await at(page, lo.time, lo.low);
+  const b = await at(page, hi.time, hi.high);
+  await page.keyboard.press('Alt+F');
+  await page.mouse.click(a.x, a.y);
+  // While drawing: labels for both anchors on the price and the time axis.
+  await page.mouse.move(b.x, b.y, { steps: 5 });
+  await expect.poll(async () => (await draws(page)).priceLabels.length).toBe(2);
+  expect((await draws(page)).timeLabels).toHaveLength(2);
+  await page.mouse.click(b.x, b.y);
+  await expect.poll(async () => (await draws(page)).drawings.length).toBe(1);
+  const fib = (await draws(page)).drawings[0]!;
+  // Selected after drawing: the labels show its anchors' prices.
+  const s1 = await draws(page);
+  expect(s1.selectedId).toBe(fib.id);
+  expect(s1.priceLabels.map((t) => Number(t.replace(/,/g, '')))).toEqual([fib.a!.price, fib.b!.price].map((p) => Number(p.toFixed(2))));
+
+  // Deselect, then hover inside a band, away from every line: highlighted; click: selected.
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => (await draws(page)).selectedId).toBe(null);
+  await expect.poll(async () => (await draws(page)).priceLabels).toEqual([]); // next frame
+  const shape = (await draws(page)).shapes[0]!.shape;
+  const box = (await page.getByTestId('chart').boundingBox())!;
+  const ys = shape.levelYs!;
+  // Middle of the band between levels 0.5 and 0.618, a quarter of the way across.
+  const inside = {
+    x: box.x + shape.a!.x + (shape.b!.x - shape.a!.x) * 0.75,
+    y: box.y + (ys[3]! + ys[4]!) / 2,
+  };
+  await page.mouse.move(inside.x, inside.y);
+  await expect.poll(async () => (await draws(page)).hoveredId).toBe(fib.id);
+  await page.mouse.click(inside.x, inside.y);
+  await expect.poll(async () => (await draws(page)).selectedId).toBe(fib.id);
+
+  // Mouse away: no hover.
+  await page.mouse.move(box.x + box.width * 0.05, box.y + box.height * 0.95);
+  await expect.poll(async () => (await draws(page)).hoveredId).toBe(null);
 });

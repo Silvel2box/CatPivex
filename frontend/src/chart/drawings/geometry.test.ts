@@ -137,14 +137,13 @@ describe('T4.3 hit-test', () => {
     const levelYs = FIB_LEVELS.map(({ level }) => 100 - 100 * level);
     const s: PixelShape = { type: 'fib', a: { x: 100, y: 0 }, b: { x: 300, y: 100 }, levelYs };
 
-    it('level lines: within tol hits, just beyond misses', () => {
-      // Level 0.236 is at y = 76.4; its neighbours (61.8, 100) and the diagonal (y = 10 at
-      // x = 120) are all more than tol + 0.5 away from the probe points.
-      const y236 = levelYs[FIB_LEVELS.findIndex((l) => l.level === 0.236)];
-      expect(hitTestShape(s, 120, y236 + TOL, TOL)).toBe('body');
-      expect(hitTestShape(s, 120, y236 - TOL, TOL)).toBe('body');
-      expect(hitTestShape(s, 120, y236 + TOL + 0.5, TOL)).toBeNull();
-      expect(hitTestShape(s, 120, y236 - TOL - 0.5, TOL)).toBeNull();
+    it('the filled area between level 0 and level 1 is body, not just the lines', () => {
+      // Between levels 0.236 (y 76.4) and 0 (y 100), far from any line and from the diagonal.
+      expect(hitTestShape(s, 250, 88, TOL)).toBe('body');
+      // Above level 1 (y 0) / below level 0 (y 100): within tol hits, beyond misses.
+      expect(hitTestShape(s, 250, -TOL, TOL)).toBe('body');
+      expect(hitTestShape(s, 250, -TOL - 0.5, TOL)).toBeNull();
+      expect(hitTestShape(s, 150, 100 + TOL + 0.5, TOL)).toBeNull();
     });
 
     it('a level line only hits within its x span', () => {

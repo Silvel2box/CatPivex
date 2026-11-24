@@ -25,6 +25,11 @@ export const TOOL_KEYS: Record<string, DrawingType> = {
 
 /** A press-drag-release longer than this (px) finishes a 2-point drawing on release. */
 const DRAG_FINISH_PX = 5;
+/**
+ * Weak magnet (like TradingView's): snap to the nearest bar's O/H/L/C only when the mouse is
+ * within this many px of it; elsewhere the point follows the mouse exactly.
+ */
+export const MAGNET_RADIUS_PX = 10;
 
 export function makeDrawing(tool: DrawingType, a: Anchor, b: Anchor, id = newDrawingId()): Drawing {
   const base = { id, color: DEFAULT_COLOR[tool], width: 1 as const };
@@ -46,6 +51,7 @@ export class DrawingController {
   private pending: { tool: DrawingType; a: Anchor; downAt: Point } | null = null;
   private preview: Drawing | null = null;
   private drag: { orig: Drawing; part: HitPart; start: Anchor } | null = null;
+  private hoveredId: string | null = null;
   private readonly cleanup: (() => void)[] = [];
   private readonly container: HTMLElement;
   private readonly chart: IChartApi;
@@ -97,7 +103,7 @@ export class DrawingController {
 
   private render(): void {
     const s = useDrawingStore.getState();
-    this.primitive.setDrawings(s.drawings, s.selectedId, this.preview);
+    this.primitive.setDrawings(s.drawings, s.selectedId, this.preview, this.hoveredId);
   }
 
   /** Pane-relative point, or null outside the candle pane (price axis, sub-panes, time axis). */
@@ -111,8 +117,12 @@ export class DrawingController {
 
   private anchorAt(p: Point, snap: boolean): Anchor | null {
     const raw = this.primitive.toAnchor(p.x, p.y);
-    if (!raw) return null;
-    return magnetSnap(raw, this.getBars(), snap && useDrawingStore.getState().magnet);
+    if (!raw || !snap || !useDrawingStore.getState().magnet) return raw;
+    const snapped = magnetSnap(raw, this.getBars(), true);
+    const x = this.primitive.timeToX(snapped.time);
+    const y = this.primitive.priceToY(snapped.price);
+    if (x === null || y === null) return raw;
+    return Math.hypot(x - p.x, y - p.y) <= MAGNET_RADIUS_PX ? snapped : raw;
   }
 
   private onDown(e: MouseEvent): void {
@@ -153,7 +163,10 @@ export class DrawingController {
   }
 
   private onMove(e: MouseEvent): void {
-    if (!this.pending && !this.drag) return;
+    if (!this.pending && !this.drag) {
+      this.updateHover(e);
+      return;
+    }
     const r = this.container.getBoundingClientRect();
     const p = { x: e.clientX - r.left, y: e.clientY - r.top }; // may leave the pane mid-drag
     if (this.pending) {
@@ -169,6 +182,16 @@ export class DrawingController {
     if (!cur || !to) return;
     const delta = { dTime: cur.time - drag.start.time, dPrice: cur.price - drag.start.price };
     useDrawingStore.getState().update(moveDrawing(drag.orig, drag.part, delta, to));
+  }
+
+  /** Highlight (handles / halo) the drawing under the mouse; re-render only when it changes. */
+  private updateHover(e: MouseEvent): void {
+    const p = useDrawingStore.getState().tool ? null : this.local(e);
+    const hit = p ? hitTestAll(this.primitive.shapes(), p.x, p.y, HIT_TOLERANCE) : null;
+    const id = hit?.id ?? null;
+    if (id === this.hoveredId) return;
+    this.hoveredId = id;
+    this.render();
   }
 
   private onUp(e: MouseEvent): void {
