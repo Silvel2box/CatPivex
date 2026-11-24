@@ -45,3 +45,16 @@ Test IDs (T1.1, T1.2, …) in test names match the test list in the project trac
 - Watchlist on the right: price + change % vs the previous daily close (refreshes every 30 s), add current symbol (+), remove (×), drag to reorder. Stored in SQLite.
 - Known: yfinance's HTTP client (curl_cffi) resolves DNS with its own c-ares resolver, which sometimes stalls. The connect timeout is 3 s, so a stall costs about 4 s instead of 12 s (see `backend/app/adapters/yahoo.py` `_yf`).
 - Known: `app/data/set100.json` (offline SET search fallback) was written by hand and only approximates the current SET100.
+
+### Phase 3: indicators ✅ (2026-11-24)
+- **Indicators** button: SMA, EMA, Bollinger Bands and VWAP draw on the price chart. RSI and MACD each get their own pane below it. Each one has its own length, colour and show/hide controls, and you can add the same type more than once (SMA 20 and SMA 50).
+- The legend at the top left shows OHLCV and every indicator value for the bar under the crosshair. When the mouse leaves the chart it shows the last bar.
+- Formulas follow Pine Script v5 and TA-Lib (`frontend/src/chart/indicators/FORMULAS.md`). VWAP resets on each market's own day: Binance and FX on UTC, SET on Bangkok time, US on New York time. It is hidden on 1D/1W.
+- Realtime bars update the indicators incrementally. A unit test checks that this matches a full recompute.
+- Expected values in the unit tests come from TA-Lib and pandas, not our own code. To regenerate them:
+  ```
+  python -m venv scripts\.venv
+  scripts\.venv\Scripts\python -m pip install -r scripts\requirements-fixtures.txt
+  scripts\.venv\Scripts\python scripts\gen_fixtures.py   # add --refetch for fresh candles
+  ```
+- Not saved yet: indicators reset when you reload the page (saving the layout is Phase 4).

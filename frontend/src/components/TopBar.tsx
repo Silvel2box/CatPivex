@@ -1,5 +1,6 @@
 import { INTERVALS } from '../api/types';
 import { useChartStore } from '../store/chartStore';
+import { IndicatorPanel } from './IndicatorPanel';
 import { SymbolSearch } from './SymbolSearch';
 
 export function TopBar() {
@@ -25,6 +26,7 @@ export function TopBar() {
           </button>
         ))}
       </nav>
+      <IndicatorPanel />
     </header>
   );
 }

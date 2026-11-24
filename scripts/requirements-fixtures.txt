@@ -1,0 +1,8 @@
+# Fixture generator for frontend indicator tests (scripts/gen_fixtures.py).
+# Own venv (gitignored via .venv/):  python -m venv scripts\.venv
+#   scripts\.venv\Scripts\python -m pip install -r scripts\requirements-fixtures.txt
+TA-Lib==0.8.3.post1
+numpy==2.5.5
+pandas==3.1.1
+yfinance==1.8.0
+tzdata==2026.6

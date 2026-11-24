@@ -18,9 +18,27 @@ export interface CatpivexDebugState {
   warning: string | null;
 }
 
+export interface CatpivexDebugIndicator {
+  id: string;
+  type: string;
+  params: Record<string, number>;
+  /** Per line: points in the current run (0 when the calc failed) and the last one. */
+  lines: Record<string, { count: number; last: { time: number; value: number } | null }>;
+}
+
+export interface CatpivexDebug {
+  state(): CatpivexDebugState;
+  /** Rendered indicator instances (visible, not hidden by intradayOnly), in store order. */
+  indicators(): CatpivexDebugIndicator[];
+  /** x of a bar time relative to the chart container, null when off-screen / unknown. */
+  xForTime(time: number): number | null;
+  /** Chart panes: 1 (candles + main-pane indicators) + one per sub-pane indicator. */
+  paneCount(): number;
+}
+
 declare global {
   interface Window {
     /** E2E debug hook, only defined in dev builds. */
-    __catpivex?: { state(): CatpivexDebugState };
+    __catpivex?: CatpivexDebug;
   }
 }

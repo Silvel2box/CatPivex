@@ -78,12 +78,16 @@ export interface ChartHandles {
   volume: ISeriesApi<'Histogram'>;
 }
 
+const CANDLE_MARGINS_WITH_VOLUME = { top: 0.1, bottom: 0.25 };
+const CANDLE_MARGINS = { top: 0.1, bottom: 0.1 };
+
 export function createMainChart(container: HTMLElement): ChartHandles {
   const chart = createChart(container, {
     autoSize: true,
     layout: {
       background: { type: ColorType.Solid, color: '#131722' },
       textColor: '#d1d4dc',
+      panes: { separatorColor: '#2a2e39' },
     },
     grid: {
       vertLines: { color: '#1e222d' },
@@ -106,7 +110,7 @@ export function createMainChart(container: HTMLElement): ChartHandles {
     wickUpColor: UP,
     wickDownColor: DOWN,
   });
-  candles.priceScale().applyOptions({ scaleMargins: { top: 0.1, bottom: 0.25 } });
+  candles.priceScale().applyOptions({ scaleMargins: CANDLE_MARGINS_WITH_VOLUME });
 
   const volume = chart.addSeries(HistogramSeries, {
     priceScaleId: 'volume',
@@ -117,6 +121,14 @@ export function createMainChart(container: HTMLElement): ChartHandles {
   volume.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
 
   return { chart, candles, volume };
+}
+
+/** Show/hide the volume histogram; candles take the freed space. */
+export function setVolumeVisible({ candles, volume }: ChartHandles, visible: boolean): void {
+  volume.applyOptions({ visible });
+  candles
+    .priceScale()
+    .applyOptions({ scaleMargins: visible ? CANDLE_MARGINS_WITH_VOLUME : CANDLE_MARGINS });
 }
 
 export function toCandleData(c: Candle): CandlestickData {
