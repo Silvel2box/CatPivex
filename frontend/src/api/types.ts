@@ -50,6 +50,28 @@ export interface CandlesResponse {
   warning: string | null;
 }
 
+export interface ErrorBody {
+  code: ErrorCode;
+  message: string;
+}
+
 export interface ErrorResponse {
-  error: { code: ErrorCode; message: string };
+  error: ErrorBody;
+}
+
+// GET/POST/PUT/DELETE /api/watchlist all return this.
+export interface Watchlist {
+  symbols: string[];
+}
+
+// GET /api/quotes?symbols=a,b -> Quote[] in the requested order.
+// change / change_percent are vs the previous 1D candle's close. Failed symbol: price null + error.
+export interface Quote {
+  symbol: string;
+  price: number | null;
+  change: number | null;
+  change_percent: number | null;
+  time: number | null;
+  delayed: boolean;
+  error: ErrorBody | null;
 }

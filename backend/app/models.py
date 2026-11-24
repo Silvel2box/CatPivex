@@ -7,6 +7,24 @@ GET /api/candles?symbol=BINANCE:BTCUSDT&interval=1h&end=<unix s>&limit=500
   - Without `end`: the latest candles, including the current (not yet closed) one.
   - `time` = candle open time, unix seconds, UTC.
 
+  - 1D / 1W candles of every source use 00:00 UTC of the trading date (week: of the Monday) as
+    `time`, so dates read the same in any timezone. Intraday candles use the real open time.
+  - `delayed` = the source is not realtime (show a "Delayed" badge). `warning` = human readable
+    note, e.g. the requested range is older than the source keeps, or stale cache was served.
+
+GET /api/symbols/search?q=  -> list[SymbolInfo] (merged from all adapters, max 30)
+
+Watchlist (ordered list of full symbols). Every call returns Watchlist:
+  GET    /api/watchlist
+  POST   /api/watchlist            body {"symbol": "SET:PTT"}  -> appended (no-op if present)
+  PUT    /api/watchlist            body {"symbols": [...]}     -> replace order (drag reorder)
+  DELETE /api/watchlist/{symbol}                               -> removed (no-op if absent)
+  A fresh database starts with DEFAULT_WATCHLIST.
+
+GET /api/quotes?symbols=BINANCE:BTCUSDT,SET:PTT -> list[Quote], same order as requested.
+  price = latest close; change/change_percent vs the previous 1D candle's close.
+  A symbol that fails has price null and `error` set; the others still return.
+
 Every error response (any status >= 400) has the body ErrorResponse.
 """
 
@@ -71,3 +89,31 @@ class ErrorBody(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: ErrorBody
+
+
+DEFAULT_WATCHLIST: tuple[str, ...] = (
+    "BINANCE:BTCUSDT",
+    "BINANCE:ETHUSDT",
+    "SET:PTT",
+    "US:AAPL",
+    "FX:XAUUSD",
+    "FX:USDTHB",
+)
+
+
+class Watchlist(BaseModel):
+    symbols: list[str]
+
+
+class WatchlistAdd(BaseModel):
+    symbol: str
+
+
+class Quote(BaseModel):
+    symbol: str
+    price: float | None
+    change: float | None
+    change_percent: float | None
+    time: int | None  # open time of the candle `price` comes from
+    delayed: bool
+    error: ErrorBody | None = None
