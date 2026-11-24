@@ -57,4 +57,17 @@ Test IDs (T1.1, T1.2, …) in test names match the test list in the project trac
   scripts\.venv\Scripts\python -m pip install -r scripts\requirements-fixtures.txt
   scripts\.venv\Scripts\python scripts\gen_fixtures.py   # add --refetch for fresh candles
   ```
-- Not saved yet: indicators reset when you reload the page (saving the layout is Phase 4).
+
+### Phase 4: drawing tools + saved layout ✅ (2026-11-24)
+- The toolbar on the left has five tools:
+  - trend line (Alt+T)
+  - horizontal line with a price label (Alt+H)
+  - vertical line (Alt+V)
+  - rectangle (Alt+R)
+  - Fibonacci retracement (Alt+F)
+- Click to place a drawing. Two-point tools take either two clicks or one press-drag-release. Esc cancels; Delete removes the selected drawing.
+- Click a drawing to select it. Drag its body to move it or an end point to reshape it, and change its colour or width in the toolbar. Dragging empty space still scrolls the chart.
+- The magnet (in the toolbar, on by default) snaps to the open, high, low or close of the nearest bar.
+- Drawings are anchored by (time, price) and saved per symbol. They stay at the same time and price when you change timeframe, even at a time with no bar (for example 13:30 drawn on 1h and shown on 1D).
+- The layout is saved and comes back after a reload: symbol, timeframe, indicators with their settings, volume and magnet. It is saved 0.5 s after the last change.
+- e2e tests reset the saved layout before each test (`e2e/fixtures.ts`).
