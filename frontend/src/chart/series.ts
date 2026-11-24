@@ -11,7 +11,7 @@ import {
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
-import type { Candle } from '../api/types';
+import type { Candle, Interval } from '../api/types';
 
 const UP = '#26a69a';
 const DOWN = '#ef5350';
@@ -19,26 +19,58 @@ const UP_VOLUME = 'rgba(38, 166, 154, 0.5)';
 const DOWN_VOLUME = 'rgba(239, 83, 80, 0.5)';
 const TIME_ZONE = 'Asia/Bangkok';
 
-const fmt = (options: Intl.DateTimeFormatOptions) =>
-  new Intl.DateTimeFormat('en-GB', { timeZone: TIME_ZONE, hourCycle: 'h23', ...options });
-const crosshairFmt = fmt({
-  weekday: 'short',
-  day: '2-digit',
-  month: 'short',
-  year: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-});
-const tickFmt: Record<TickMarkType, Intl.DateTimeFormat> = {
-  [TickMarkType.Year]: fmt({ year: 'numeric' }),
-  [TickMarkType.Month]: fmt({ month: 'short' }),
-  [TickMarkType.DayOfMonth]: fmt({ day: 'numeric' }),
-  [TickMarkType.Time]: fmt({ hour: '2-digit', minute: '2-digit' }),
-  [TickMarkType.TimeWithSeconds]: fmt({ hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-};
+const fmt = (timeZone: string, options: Intl.DateTimeFormatOptions) =>
+  new Intl.DateTimeFormat('en-GB', { timeZone, hourCycle: 'h23', ...options });
 
 // Data times are always UTC timestamps (seconds); only the display is converted.
 const toDate = (time: Time) => new Date((time as number) * 1000);
+
+export interface TimeFormatters {
+  tick: (time: Time, type: TickMarkType) => string;
+  crosshair: (time: Time) => string;
+}
+
+function makeFormatters(timeZone: string, withTime: boolean): TimeFormatters {
+  const crosshairFmt = fmt(timeZone, {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: '2-digit',
+    ...(withTime ? { hour: '2-digit', minute: '2-digit' } : {}),
+  });
+  const tickFmt: Record<TickMarkType, Intl.DateTimeFormat> = {
+    [TickMarkType.Year]: fmt(timeZone, { year: 'numeric' }),
+    [TickMarkType.Month]: fmt(timeZone, { month: 'short' }),
+    [TickMarkType.DayOfMonth]: fmt(timeZone, { day: 'numeric' }),
+    [TickMarkType.Time]: fmt(timeZone, { hour: '2-digit', minute: '2-digit' }),
+    [TickMarkType.TimeWithSeconds]: fmt(timeZone, {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }),
+  };
+  return {
+    tick: (time, type) => tickFmt[type].format(toDate(time)),
+    crosshair: (time) => crosshairFmt.format(toDate(time)),
+  };
+}
+
+const INTRADAY_FORMATTERS = makeFormatters(TIME_ZONE, true);
+// 1D/1W bars are stamped 00:00 UTC of the trading date: show that date, not Bangkok 07:00.
+const DAILY_FORMATTERS = makeFormatters('UTC', false);
+
+export function timeFormatters(interval: Interval): TimeFormatters {
+  return interval === '1D' || interval === '1W' ? DAILY_FORMATTERS : INTRADAY_FORMATTERS;
+}
+
+/** Switch the time axis / crosshair labels to suit `interval`. */
+export function applyTimeDisplay(chart: IChartApi, interval: Interval): void {
+  const f = timeFormatters(interval);
+  chart.applyOptions({
+    timeScale: { tickMarkFormatter: f.tick },
+    localization: { timeFormatter: f.crosshair },
+  });
+}
 
 export interface ChartHandles {
   chart: IChartApi;
@@ -61,9 +93,9 @@ export function createMainChart(container: HTMLElement): ChartHandles {
     timeScale: {
       borderColor: '#2a2e39',
       timeVisible: true,
-      tickMarkFormatter: (time: Time, type: TickMarkType) => tickFmt[type].format(toDate(time)),
+      tickMarkFormatter: INTRADAY_FORMATTERS.tick,
     },
-    localization: { timeFormatter: (time: Time) => crosshairFmt.format(toDate(time)) },
+    localization: { timeFormatter: INTRADAY_FORMATTERS.crosshair },
   });
 
   const candles = chart.addSeries(CandlestickSeries, {

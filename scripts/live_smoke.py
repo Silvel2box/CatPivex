@@ -5,11 +5,12 @@ Stdlib only. Exit code 0 = all checks passed.
 """
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
 
-BASE = "http://127.0.0.1:8000"
+BASE = os.environ.get("CATPIVEX_API", "http://127.0.0.1:8000")
 SYMBOL = "BINANCE:BTCUSDT"
 INTERVALS = {"1m": 60, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1D": 86400, "1W": 604800}
 LIMIT = 500

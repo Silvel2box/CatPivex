@@ -1,14 +1,14 @@
 import { INTERVALS } from '../api/types';
 import { useChartStore } from '../store/chartStore';
+import { SymbolSearch } from './SymbolSearch';
 
 export function TopBar() {
-  const symbol = useChartStore((s) => s.symbol);
   const interval = useChartStore((s) => s.interval);
   const setInterval = useChartStore((s) => s.setInterval);
 
   return (
     <header className="flex h-10 shrink-0 items-center gap-4 border-b border-[#2a2e39] bg-[#131722] px-3 text-sm text-[#d1d4dc]">
-      <span className="font-semibold">{symbol}</span>
+      <SymbolSearch />
       <nav className="flex gap-1" aria-label="Timeframe">
         {INTERVALS.map((tf) => (
           <button

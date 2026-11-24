@@ -56,6 +56,9 @@ class BinanceAdapter:
     def is_realtime(self) -> bool:
         return True
 
+    def earliest_time(self, interval: str, now: int) -> int | None:
+        return None
+
     def get_candles(
         self, ticker: str, interval: str, start: int | None, end: int | None, limit: int
     ) -> list[Candle]:
@@ -63,6 +66,21 @@ class BinanceAdapter:
             raise AdapterError("invalid_symbol", f"Invalid Binance ticker: {ticker!r}")
         if interval not in INTERVAL_MAP:
             raise AdapterError("invalid_interval", f"Unsupported interval: {interval!r}")
+        if start is None:
+            return self._klines(ticker, interval, None, end, limit)
+        candles: list[Candle] = []
+        while len(candles) < limit:  # pages of MAX_LIMIT forward from start
+            want = min(limit - len(candles), MAX_LIMIT)
+            page = self._klines(ticker, interval, start, end, want)
+            candles += page
+            if len(page) < want:
+                break
+            start = page[-1].time + 1
+        return candles
+
+    def _klines(
+        self, ticker: str, interval: str, start: int | None, end: int | None, limit: int
+    ) -> list[Candle]:
         params: dict[str, Any] = {
             "symbol": ticker,
             "interval": INTERVAL_MAP[interval],

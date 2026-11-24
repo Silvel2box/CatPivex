@@ -1,8 +1,12 @@
 from fastapi import APIRouter, Query, Request
 
-from app.models import CandlesResponse, SymbolInfo
+from app.errors import ApiError
+from app.models import CandlesResponse, Quote, SymbolInfo
+from app.services.quotes import get_quotes
 
 router = APIRouter(prefix="/api")
+
+MAX_QUOTE_SYMBOLS = 50
 
 
 @router.get("/health")
@@ -24,3 +28,11 @@ def candles(
 @router.get("/symbols/search")
 def search_symbols(request: Request, q: str = "") -> list[SymbolInfo]:
     return request.app.state.registry.search(q)
+
+
+@router.get("/quotes")
+def quotes(request: Request, symbols: str = "") -> list[Quote]:
+    wanted = [s.strip() for s in symbols.split(",") if s.strip()]
+    if len(wanted) > MAX_QUOTE_SYMBOLS:
+        raise ApiError("validation_error", f"At most {MAX_QUOTE_SYMBOLS} symbols per request")
+    return get_quotes(request.app.state.candle_service, wanted)

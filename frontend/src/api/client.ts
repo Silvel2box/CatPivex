@@ -1,4 +1,4 @@
-import type { CandlesResponse, ErrorResponse, Interval } from './types';
+import type { CandlesResponse, ErrorResponse, Interval, SymbolInfo } from './types';
 
 export const API_BASE: string = import.meta.env.VITE_API_BASE ?? 'http://127.0.0.1:8000';
 
@@ -37,4 +37,8 @@ export function fetchCandles(
   signal?: AbortSignal,
 ): Promise<CandlesResponse> {
   return getJson<CandlesResponse>('/api/candles', query, signal);
+}
+
+export function searchSymbols(q: string, signal?: AbortSignal): Promise<SymbolInfo[]> {
+  return getJson<SymbolInfo[]>('/api/symbols/search', { q }, signal);
 }

@@ -1,27 +1,38 @@
 import { defineConfig } from '@playwright/test';
 
-// E2E runs against the real dev servers (real Binance data). Uses the installed Edge, no browser download.
+// E2E runs its own servers on separate ports with a separate DB (backend/e2e.db), so it never
+// touches a dev session you have open on 8000/5173 or your real watchlist. Data is real (Binance/Yahoo).
+// Uses the installed Edge, no browser download.
+export const E2E_API = 'http://127.0.0.1:8100';
+const WEB_PORT = 5180;
+
 export default defineConfig({
   testDir: 'e2e',
   timeout: 60_000,
   workers: 1,
   reporter: 'list',
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: `http://localhost:${WEB_PORT}`,
     channel: 'msedge',
     viewport: { width: 1400, height: 800 },
   },
   webServer: [
     {
-      command: 'npm run dev:api',
-      url: 'http://127.0.0.1:8000/api/health',
-      reuseExistingServer: true,
+      command:
+        'cd backend && .venv\\Scripts\\python -m uvicorn app.main:app --host 127.0.0.1 --port 8100',
+      url: `${E2E_API}/api/health`,
+      env: {
+        CATPIVEX_DB_PATH: 'e2e.db',
+        CATPIVEX_CORS_ORIGINS: `http://localhost:${WEB_PORT}`,
+      },
+      reuseExistingServer: false,
       timeout: 60_000,
     },
     {
-      command: 'npm run dev:web',
-      url: 'http://localhost:5173',
-      reuseExistingServer: true,
+      command: `cd frontend && npx vite --port ${WEB_PORT} --strictPort`,
+      url: `http://localhost:${WEB_PORT}`,
+      env: { VITE_API_BASE: E2E_API },
+      reuseExistingServer: false,
       timeout: 60_000,
     },
   ],

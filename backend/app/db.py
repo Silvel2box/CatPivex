@@ -1,10 +1,10 @@
-"""SQLite storage for closed candles."""
+"""SQLite storage: closed candles, which time ranges were fetched (coverage), the watchlist."""
 
 import sqlite3
 from contextlib import closing
 from pathlib import Path
 
-from app.models import Candle
+from app.models import DEFAULT_WATCHLIST, Candle
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS candles (
@@ -17,14 +17,32 @@ CREATE TABLE IF NOT EXISTS candles (
     c REAL NOT NULL,
     v REAL NOT NULL,
     PRIMARY KEY (symbol, interval, time)
-)
+);
+-- [start, end) ranges whose closed candles are all in `candles` (possibly none: nights,
+-- weekends). Ranges of one (symbol, interval) never overlap or touch; add_coverage merges.
+CREATE TABLE IF NOT EXISTS candle_coverage (
+    symbol   TEXT    NOT NULL,
+    interval TEXT    NOT NULL,
+    start    INTEGER NOT NULL,
+    end      INTEGER NOT NULL,
+    PRIMARY KEY (symbol, interval, start)
+);
+CREATE TABLE IF NOT EXISTS watchlist (
+    symbol   TEXT    PRIMARY KEY,
+    position INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 
 class Database:
     """Opens a short-lived connection per call, so it is safe from any thread.
 
-    The file and schema are created on first use, not at construction.
+    The file and schema are created on first use, not at construction. A fresh database gets
+    DEFAULT_WATCHLIST once; emptying the watchlist later does not seed it again.
     """
 
     def __init__(self, path: Path | str):
@@ -32,12 +50,22 @@ class Database:
         self._initialized = False
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path)
+        conn = sqlite3.connect(self.path, timeout=10)
         if not self._initialized:
-            conn.execute(SCHEMA)
-            conn.commit()
+            conn.executescript(SCHEMA)
+            with conn:
+                seeded = conn.execute(
+                    "INSERT OR IGNORE INTO meta (key, value) VALUES ('watchlist_seeded', '1')"
+                ).rowcount
+                if seeded:
+                    conn.executemany(
+                        "INSERT OR IGNORE INTO watchlist (symbol, position) VALUES (?, ?)",
+                        [(s, i) for i, s in enumerate(DEFAULT_WATCHLIST)],
+                    )
             self._initialized = True
         return conn
+
+    # --- candles ----------------------------------------------------------------------------
 
     def get_candles(self, symbol: str, interval: str, start: int, end: int) -> list[Candle]:
         """Cached candles with start <= time < end, ascending."""
@@ -63,3 +91,65 @@ class Database:
                     for k in candles
                 ],
             )
+
+    def get_coverage(
+        self, symbol: str, interval: str, start: int, end: int
+    ) -> list[tuple[int, int]]:
+        """Covered [start, end) ranges overlapping [start, end), ascending."""
+        with closing(self._connect()) as conn:
+            return conn.execute(
+                "SELECT start, end FROM candle_coverage"
+                " WHERE symbol = ? AND interval = ? AND start < ? AND end > ? ORDER BY start",
+                (symbol, interval, end, start),
+            ).fetchall()
+
+    def add_coverage(self, symbol: str, interval: str, start: int, end: int) -> None:
+        """Marks [start, end) as fetched, merged with overlapping or touching ranges."""
+        if start >= end:
+            return
+        with closing(self._connect()) as conn, conn:
+            key = (symbol, interval)
+            rows = conn.execute(
+                "SELECT start, end FROM candle_coverage"
+                " WHERE symbol = ? AND interval = ? AND start <= ? AND end >= ?",
+                (*key, end, start),
+            ).fetchall()
+            start = min([start, *(a for a, _ in rows)])
+            end = max([end, *(b for _, b in rows)])
+            conn.execute(
+                "DELETE FROM candle_coverage"
+                " WHERE symbol = ? AND interval = ? AND start >= ? AND end <= ?",
+                (*key, start, end),
+            )
+            conn.execute(
+                "INSERT INTO candle_coverage (symbol, interval, start, end) VALUES (?, ?, ?, ?)",
+                (*key, start, end),
+            )
+
+    # --- watchlist --------------------------------------------------------------------------
+
+    def get_watchlist(self) -> list[str]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute("SELECT symbol FROM watchlist ORDER BY position").fetchall()
+        return [s for (s,) in rows]
+
+    def add_to_watchlist(self, symbol: str) -> None:
+        """Appends `symbol`; no-op if it is already listed."""
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO watchlist (symbol, position)"
+                " SELECT ?, COALESCE(MAX(position) + 1, 0) FROM watchlist",
+                (symbol,),
+            )
+
+    def set_watchlist(self, symbols: list[str]) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.execute("DELETE FROM watchlist")
+            conn.executemany(
+                "INSERT INTO watchlist (symbol, position) VALUES (?, ?)",
+                [(s, i) for i, s in enumerate(symbols)],
+            )
+
+    def remove_from_watchlist(self, symbol: str) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.execute("DELETE FROM watchlist WHERE symbol = ?", (symbol,))

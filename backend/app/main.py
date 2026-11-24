@@ -12,11 +12,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.adapters.binance import BinanceAdapter
 from app.adapters.registry import Registry
+from app.adapters.yahoo import YahooAdapter, YahooSource
 from app.config import Settings, load_settings
 from app.db import Database
 from app.errors import ApiError
 from app.models import ErrorCode
-from app.routers import market
+from app.routers import market, watchlist
 from app.services.candles import CandleService
 
 log = logging.getLogger(__name__)
@@ -34,18 +35,30 @@ def _http_error_code(status: int) -> ErrorCode:
     return "validation_error" if status < 500 else "internal_error"
 
 
+def default_registry() -> Registry:
+    yahoo = YahooSource()  # shared by the three Yahoo exchanges
+    return Registry(
+        {
+            "BINANCE": BinanceAdapter(),
+            **{ex: YahooAdapter(ex, yahoo) for ex in ("SET", "US", "FX")},
+        }
+    )
+
+
 def create_app(
     settings: Settings | None = None,
     registry: Registry | None = None,
     clock: Callable[[], float] = time.time,
 ) -> FastAPI:
     settings = settings or load_settings()
-    registry = registry or Registry({"BINANCE": BinanceAdapter()})
+    registry = registry or default_registry()
 
     app = FastAPI(title="CatPivex API")
     app.state.registry = registry
-    app.state.candle_service = CandleService(Database(settings.db_path), registry, clock)
+    app.state.db = Database(settings.db_path)
+    app.state.candle_service = CandleService(app.state.db, registry, clock)
     app.include_router(market.router)
+    app.include_router(watchlist.router)
 
     @app.exception_handler(ApiError)
     async def api_error_handler(_: Request, exc: ApiError) -> JSONResponse:

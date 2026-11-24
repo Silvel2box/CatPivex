@@ -1,10 +1,14 @@
 """Maps the EXCHANGE prefix of `EXCHANGE:TICKER` to a DataAdapter."""
 
+import logging
 import re
 
 from app.adapters.base import AdapterError, DataAdapter
 from app.models import SymbolInfo
 
+log = logging.getLogger(__name__)
+
+SEARCH_LIMIT = 30
 SYMBOL_RE = re.compile(r"^([A-Z0-9]+):([A-Z0-9._=^-]+)$")
 
 
@@ -32,4 +36,20 @@ class Registry:
         return adapter, f"{exchange}:{ticker}", ticker
 
     def search(self, query: str) -> list[SymbolInfo]:
-        return [info for adapter in self.adapters.values() for info in adapter.search(query)]
+        """Merged results of every adapter (one failing is skipped), best matches first."""
+        bare = query.strip().upper().split(":")[-1]
+        found: dict[str, SymbolInfo] = {}
+        for exchange, adapter in self.adapters.items():
+            try:
+                results = adapter.search(query)
+            except Exception:
+                log.exception("Symbol search failed for %s (query %r)", exchange, query)
+                continue
+            for info in results:
+                found.setdefault(info.symbol, info)
+
+        def rank(info: SymbolInfo) -> int:
+            ticker = info.symbol.split(":", 1)[-1]
+            return 0 if ticker == bare else 1 if ticker.startswith(bare) else 2
+
+        return sorted(found.values(), key=rank)[:SEARCH_LIMIT]

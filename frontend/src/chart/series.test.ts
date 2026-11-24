@@ -1,6 +1,7 @@
+import { TickMarkType, type Time } from 'lightweight-charts';
 import { describe, expect, it } from 'vitest';
 import type { Candle } from '../api/types';
-import { applyRealtimeBar, prependBars } from './series';
+import { applyRealtimeBar, prependBars, timeFormatters } from './series';
 
 const bar = (time: number, close = 1): Candle => ({
   time,
@@ -32,5 +33,26 @@ describe('applyRealtimeBar', () => {
     expect(bars).toHaveLength(3);
     expect(applyRealtimeBar(bars, bar(60))).toBe(false);
     expect(bars).toHaveLength(3);
+  });
+});
+
+describe('T2.9d timeFormatters', () => {
+  // 2026-11-24 00:00 UTC = 07:00 in Bangkok.
+  const midnightUtc = (Date.UTC(2026, 10, 24) / 1000) as Time;
+
+  it('1D / 1W show the UTC trading date without a time', () => {
+    for (const interval of ['1D', '1W'] as const) {
+      const f = timeFormatters(interval);
+      expect(f.crosshair(midnightUtc)).toContain('24 Nov');
+      expect(f.crosshair(midnightUtc)).not.toMatch(/\d\d:\d\d/);
+      // 23:00 UTC on the 23rd must stay the 23rd (Bangkok would say the 24th).
+      expect(f.tick(((midnightUtc as number) - 3600) as Time, TickMarkType.DayOfMonth)).toBe('23');
+    }
+  });
+
+  it('intraday keeps Asia/Bangkok time', () => {
+    const f = timeFormatters('1h');
+    expect(f.crosshair(midnightUtc)).toContain('07:00');
+    expect(f.tick(((midnightUtc as number) - 3600) as Time, TickMarkType.DayOfMonth)).toBe('24');
   });
 });

@@ -12,6 +12,10 @@ export interface CatpivexDebugState {
   /** True while an initial or history request is in flight. */
   loading: boolean;
   wsConnected: boolean;
+  /** Current CandlesResponse came from a non-realtime source. */
+  delayed: boolean;
+  /** Latest source warning from the API (shown even if the user dismissed the note). */
+  warning: string | null;
 }
 
 declare global {
