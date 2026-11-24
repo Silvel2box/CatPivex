@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Candle } from '../../api/types';
 import {
+  constrainAngle,
   fibPrices,
   hitTestAll,
   hitTestShape,
@@ -398,5 +399,37 @@ describe('T4.13 fib aiming + fill', () => {
     // Only fibs carry a fill.
     const [t] = sanitizeDrawings([{ ...fib, type: 'trendline', fill: 0.3 }]);
     expect(t).not.toHaveProperty('fill');
+  });
+});
+
+describe('T4.15 shift angle lock + fib extend', () => {
+  it('constrainAngle snaps to 0/45/90° keeping the distance along that direction', () => {
+    const o = { x: 100, y: 100 };
+    expect(constrainAngle(o, { x: 200, y: 108 })).toEqual({ x: 200, y: 100 }); // ~horizontal
+    expect(constrainAngle(o, { x: 93, y: 20 })).toEqual({ x: 100, y: 20 }); // ~vertical
+    const d = constrainAngle(o, { x: 160, y: 50 }); // ~-45°
+    expect(d.x - o.x).toBeCloseTo(-(d.y - o.y), 9);
+    expect(constrainAngle(o, o)).toEqual(o);
+  });
+
+  it('an extended fib hits up to the pane edge, a normal one only within its anchors', () => {
+    const levelYs = FIB_LEVELS.map(({ level }) => 100 - 100 * level);
+    const s: PixelShape = { type: 'fib', a: { x: 100, y: 0 }, b: { x: 300, y: 100 }, levelYs };
+    expect(hitTestShape(s, 500, 50, 6)).toBeNull();
+    expect(hitTestShape({ ...s, extendTo: 800 }, 500, 50, 6)).toBe('body');
+    expect(hitTestShape({ ...s, extendTo: 800 }, 900, 50, 6)).toBeNull();
+  });
+
+  it('sanitizeDrawings keeps extend: true on a fib only', () => {
+    const f = {
+      id: 'f',
+      type: 'fib',
+      color: '#787b86',
+      width: 1,
+      a: { time: 0, price: 1 },
+      b: { time: 60, price: 2 },
+    };
+    expect(sanitizeDrawings([{ ...f, extend: true }])[0]).toMatchObject({ extend: true });
+    expect(sanitizeDrawings([{ ...f, extend: 'yes' }])[0]).not.toHaveProperty('extend');
   });
 });

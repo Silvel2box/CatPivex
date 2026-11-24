@@ -88,6 +88,8 @@ export function createMainChart(container: HTMLElement): ChartHandles {
       background: { type: ColorType.Solid, color: '#131722' },
       textColor: '#d1d4dc',
       panes: { separatorColor: '#2a2e39' },
+      // The licence's tradingview.com link is shown under the watchlist instead (Watchlist.tsx).
+      attributionLogo: false,
     },
     grid: {
       vertLines: { color: '#1e222d' },

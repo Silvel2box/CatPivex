@@ -71,15 +71,23 @@ test('T2.9g click a SET row → chart switches and shows Delayed; Binance has no
   expect((await state(page)).delayed).toBe(true);
 });
 
-test('T2.9h add current symbol, remove a row, both persist after reload', async ({ page, request }) => {
-  await page.getByTestId('symbol-button').click();
-  await page.getByTestId('symbol-search-input').fill('BINANCE:BNBUSDT');
-  await page.locator('[data-testid="symbol-result"][data-symbol="BINANCE:BNBUSDT"]').click();
-  await waitSymbolLoaded(page, 'BINANCE:BNBUSDT');
-
+test('T2.9h "+" searches and adds any symbol (chart stays put), remove a row, both persist after reload', async ({
+  page,
+  request,
+}) => {
+  const chartBefore = (await state(page)).symbol;
   await page.getByTestId('wl-add').click();
+  await page.getByTestId('wl-search-input').fill('bnb');
+  const bnb = page.locator('[data-testid="wl-search-result"][data-symbol="BINANCE:BNBUSDT"]');
+  await bnb.click();
   await expect(row(page, 'BINANCE:BNBUSDT')).toBeVisible();
-  await expect(page.getByTestId('wl-add')).toBeDisabled();
+  // The panel stays open for more; the row is now marked as added and can't be added twice.
+  await expect(bnb).toHaveAttribute('data-added', 'true');
+  await bnb.click({ force: true }); // aria-disabled: Playwright would wait for it to be enabled
+  await expect(row(page, 'BINANCE:BNBUSDT')).toHaveCount(1);
+  expect((await state(page)).symbol).toBe(chartBefore);
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('wl-search-input')).toHaveCount(0);
 
   await row(page, 'US:AAPL').hover();
   await row(page, 'US:AAPL').getByTestId('wl-remove').click();

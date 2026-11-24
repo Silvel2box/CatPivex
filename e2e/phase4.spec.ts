@@ -11,8 +11,17 @@ type Drawing = {
   a?: Anchor;
   b?: Anchor;
   fill?: number;
+  extend?: boolean;
 };
-type Shape = { type: string; x?: number; y?: number; a?: { x: number; y: number }; b?: { x: number; y: number }; levelYs?: number[] };
+type Shape = {
+  type: string;
+  x?: number;
+  y?: number;
+  a?: { x: number; y: number };
+  b?: { x: number; y: number };
+  levelYs?: number[];
+  extendTo?: number;
+};
 type DrawState = {
   hoveredId: string | null;
   ghost: Anchor | null;
@@ -412,4 +421,84 @@ test('T4.13 fib aiming: dot before the click, wick snap (magnet off), big handle
   await page.waitForFunction(() => (window as unknown as Partial<W>).__catpivex !== undefined);
   await waitDrawingsLoaded(page, BTC);
   expect((await draws(page)).drawings[0]!.fill).toBe(0.5);
+});
+
+test('T4.14 Ctrl+Z / Ctrl+Y (a drag is one step), Shift locks a trend line, right-click menu, fib reverse/extend', async ({
+  page,
+}) => {
+  const box = (await page.getByTestId('chart').boundingBox())!;
+  const P = (fx: number, fy: number) => ({ x: box.x + box.width * fx, y: box.y + box.height * fy });
+  const n = async () => (await draws(page)).drawings.length;
+
+  // Shift: a trend line drawn at a slight slope comes out exactly horizontal on screen.
+  const s0 = P(0.3, 0.35);
+  await page.keyboard.press('Alt+T');
+  await page.mouse.click(s0.x, s0.y);
+  await page.keyboard.down('Shift');
+  await page.mouse.move(s0.x + 160, s0.y + 9, { steps: 4 });
+  await page.mouse.click(s0.x + 160, s0.y + 9);
+  await page.keyboard.up('Shift');
+  await expect.poll(n).toBe(1);
+  const tl = (await draws(page)).drawings[0]!;
+  expect(tl.b!.price).toBeCloseTo(tl.a!.price, 6);
+
+  // Drag the line in 6 moves; Ctrl+Z undoes the whole drag, Ctrl+Y redoes it.
+  const mid = { x: s0.x + 80, y: s0.y };
+  await page.mouse.move(mid.x, mid.y);
+  await page.mouse.down();
+  await page.mouse.move(mid.x + 60, mid.y + 50, { steps: 6 });
+  await page.mouse.up();
+  const dragged = (await draws(page)).drawings[0]!;
+  expect(dragged.a!.price).not.toBe(tl.a!.price);
+  await page.keyboard.press('Control+z');
+  await expect.poll(async () => (await draws(page)).drawings[0]).toEqual(tl);
+  await page.keyboard.press('Control+y');
+  await expect.poll(async () => (await draws(page)).drawings[0]).toEqual(dragged);
+  await page.keyboard.press('Control+z');
+  await page.keyboard.press('Control+z'); // and the line itself
+  await expect.poll(n).toBe(0);
+  await page.keyboard.press('Control+Shift+Z');
+  await expect.poll(n).toBe(1);
+
+  // Fib, then right-click it: reverse and extend from the menu.
+  const fa = P(0.55, 0.25);
+  const fb = P(0.7, 0.55);
+  await page.keyboard.press('Alt+F');
+  await page.mouse.click(fa.x, fa.y);
+  await page.mouse.click(fb.x, fb.y);
+  await expect.poll(n).toBe(2);
+  const fib = (await draws(page)).drawings[1]!;
+  await page.keyboard.press('Escape');
+  const inside = P(0.65, 0.4);
+  await page.mouse.click(inside.x, inside.y, { button: 'right' });
+  await expect(page.getByTestId('drawing-menu')).toBeVisible();
+  await page.getByTestId('menu-reverse').click();
+  await expect(page.getByTestId('drawing-menu')).toHaveCount(0);
+  await expect.poll(async () => (await draws(page)).drawings[1]!.a).toEqual(fib.b);
+  await page.mouse.click(inside.x, inside.y, { button: 'right' });
+  await page.getByTestId('menu-extend').click();
+  await expect.poll(async () => (await draws(page)).drawings[1]!.extend).toBe(true);
+  const ext = (await draws(page)).shapes[1]!.shape;
+  expect(ext.extendTo).toBeGreaterThan(Math.max(ext.a!.x, ext.b!.x));
+  // Clicking far right of the anchors, on the extended area, now grabs the fib.
+  await page.keyboard.press('Escape');
+  const right = { x: box.x + ext.extendTo! - 20, y: box.y + (ext.levelYs![3]! + ext.levelYs![4]!) / 2 };
+  await page.mouse.click(right.x, right.y);
+  await expect.poll(async () => (await draws(page)).selectedId).toBe(fib.id);
+  // Toolbar buttons do the same: extend off, reverse back.
+  await page.getByTestId('drawing-extend').click();
+  await page.getByTestId('drawing-reverse').click();
+  await expect.poll(async () => (await draws(page)).drawings[1]).toEqual(fib);
+
+  // Right-click menu: Delete. Right-click on empty chart: no drawing menu.
+  await page.mouse.click(inside.x, inside.y, { button: 'right' });
+  await page.getByTestId('menu-delete').click();
+  await expect.poll(n).toBe(1);
+  const empty = P(0.15, 0.85);
+  await page.mouse.click(empty.x, empty.y, { button: 'right' });
+  await expect(page.getByTestId('drawing-menu')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  // Everything above was saved (debounced) exactly as it ended.
+  await expect.poll(async () => (await savedDrawings(page, BTC)).length).toBe(1);
 });

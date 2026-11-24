@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { startPolling } from '../realtime/poll';
 import { useChartStore } from '../store/chartStore';
 import { useWatchlistStore } from '../store/watchlistStore';
 import { formatChangePercent, formatPrice, splitSymbol } from './quoteFormat';
+import { SymbolSearchPanel } from './SymbolSearchPanel';
 
 const QUOTES_POLL_MS = 30_000;
 
@@ -15,6 +16,18 @@ export function Watchlist() {
   const current = useChartStore((s) => s.symbol);
   const setSymbol = useChartStore((s) => s.setSymbol);
   const [drag, setDrag] = useState<{ from: number; over: number } | null>(null);
+  const [adding, setAdding] = useState(false);
+  const addRef = useRef<HTMLDivElement>(null);
+
+  // Click outside the "+" search closes it.
+  useEffect(() => {
+    if (!adding) return;
+    const onDown = (e: MouseEvent) => {
+      if (!addRef.current?.contains(e.target as Node)) setAdding(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [adding]);
 
   useEffect(() => {
     void load();
@@ -27,27 +40,41 @@ export function Watchlist() {
     return startPolling((signal) => refreshQuotes(signal), QUOTES_POLL_MS, { immediate: true });
   }, [quoteKey, refreshQuotes]);
 
-  const inList = symbols.includes(current);
-
   return (
     <aside
       data-testid="watchlist"
       aria-label="Watchlist"
       className="flex w-60 shrink-0 flex-col border-l border-[#2a2e39] bg-[#131722] text-sm text-[#d1d4dc]"
     >
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-[#2a2e39] px-3">
+      <div
+        ref={addRef}
+        className="relative flex h-9 shrink-0 items-center justify-between border-b border-[#2a2e39] px-3"
+      >
         <span className="font-semibold">Watchlist</span>
         <button
           type="button"
           data-testid="wl-add"
-          disabled={inList}
-          onClick={() => void add(current)}
-          title={inList ? `${current} is already in the watchlist` : `Add ${current}`}
-          aria-label={`Add ${current} to watchlist`}
-          className="flex h-6 w-6 items-center justify-center rounded text-lg leading-none hover:bg-[#2a2e39] disabled:cursor-default disabled:text-[#4a4e59] disabled:hover:bg-transparent"
+          aria-expanded={adding}
+          onClick={() => setAdding((a) => !a)}
+          title="Add symbol"
+          aria-label="Add symbol to watchlist"
+          className={`flex h-6 w-6 items-center justify-center rounded text-lg leading-none hover:bg-[#2a2e39] ${
+            adding ? 'bg-[#2a2e39]' : ''
+          }`}
         >
           +
         </button>
+        {adding && (
+          <SymbolSearchPanel
+            initialQuery=""
+            onPick={(symbol) => void add(symbol)} // stays open: add several in a row
+            onClose={() => setAdding(false)}
+            isAdded={(symbol) => symbols.includes(symbol)}
+            inputTestId="wl-search-input"
+            resultTestId="wl-search-result"
+            className="absolute top-full right-0 z-30 mt-1 w-96 rounded border border-[#2a2e39] bg-[#1e222d] shadow-xl"
+          />
+        )}
       </div>
 
       <div className="flex shrink-0 justify-between px-3 py-1 text-[11px] text-[#787b86]">
@@ -146,7 +173,7 @@ export function Watchlist() {
       </ul>
 
       {loaded && symbols.length === 0 && (
-        <p className="px-3 py-2 text-xs text-[#787b86]">Empty. Press + to add the chart symbol.</p>
+        <p className="px-3 py-2 text-xs text-[#787b86]">Empty. Press + to add a symbol.</p>
       )}
       {!loaded && !error && <p className="px-3 py-2 text-xs text-[#787b86]">Loading…</p>}
       {error && (
@@ -165,6 +192,22 @@ export function Watchlist() {
           )}
         </div>
       )}
+      {/* Required by the Lightweight Charts licence (Apache 2.0 NOTICE): credit + link to
+          tradingview.com somewhere on the page; this replaces the logo on the chart. */}
+      <p
+        data-testid="chart-attribution"
+        className="shrink-0 border-t border-[#2a2e39] px-3 py-1.5 text-[10px] text-[#5d606b]"
+      >
+        Charts by{' '}
+        <a
+          href="https://www.tradingview.com/"
+          target="_blank"
+          rel="noreferrer"
+          className="hover:text-[#b2b5be] hover:underline"
+        >
+          TradingView Lightweight Charts™
+        </a>
+      </p>
     </aside>
   );
 }

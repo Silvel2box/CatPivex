@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ChartView } from './chart/ChartView';
+import { DrawingContextMenu } from './components/DrawingContextMenu';
 import { DrawingToolbar } from './components/DrawingToolbar';
 import { TopBar } from './components/TopBar';
 import { Watchlist } from './components/Watchlist';
@@ -26,6 +27,7 @@ export function App() {
         <main className="min-w-0 flex-1">{ready && <ChartView />}</main>
         <Watchlist />
       </div>
+      <DrawingContextMenu />
     </div>
   );
 }

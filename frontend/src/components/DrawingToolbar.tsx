@@ -85,7 +85,7 @@ export function DrawingToolbar() {
   const tool = useDrawingStore((s) => s.tool);
   const magnet = useDrawingStore((s) => s.magnet);
   const selected = useDrawingStore((s) => s.drawings.find((d) => d.id === s.selectedId) ?? null);
-  const { setTool, setMagnet, setStyle, remove } = useDrawingStore.getState();
+  const { setTool, setMagnet, setStyle, remove, reverse } = useDrawingStore.getState();
 
   return (
     <nav
@@ -171,6 +171,29 @@ export function DrawingToolbar() {
                 </option>
               ))}
             </select>
+          )}
+          {selected.type === 'fib' && (
+            <>
+              <button
+                type="button"
+                data-testid="drawing-reverse"
+                title="Reverse: swap levels 0 and 1"
+                onClick={() => reverse(selected.id)}
+                className={btn(false)}
+              >
+                {svg(<path d="M8 4v16M8 4 5 7M8 4l3 3M16 20V4M16 20l-3-3M16 20l3-3" />)}
+              </button>
+              <button
+                type="button"
+                data-testid="drawing-extend"
+                title="Extend lines to the right"
+                aria-pressed={selected.extend === true}
+                onClick={() => setStyle(selected.id, { extend: !selected.extend })}
+                className={btn(selected.extend === true)}
+              >
+                {svg(<path d="M4 8h10M4 12h16M4 16h10M17 9l3 3-3 3" />)}
+              </button>
+            </>
           )}
           <button
             type="button"

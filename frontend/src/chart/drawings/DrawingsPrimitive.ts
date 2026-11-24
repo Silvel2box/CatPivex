@@ -216,7 +216,10 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
         if (a && b) {
           if (d.type === 'fib') {
             const ys = fibPrices(d.a, d.b).map((p) => this.y(p));
-            if (ys.every((v) => v !== null)) shape = { type: 'fib', a, b, levelYs: ys as number[] };
+            if (ys.every((v) => v !== null)) {
+              shape = { type: 'fib', a, b, levelYs: ys as number[] };
+              if (d.extend) shape.extendTo = this.chart.timeScale().width();
+            }
           } else {
             shape = { type: d.type, a, b };
           }
@@ -323,7 +326,7 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
               case 'fib': {
                 if (d.type !== 'fib') break;
                 const x0 = Math.min(shape.a.x, shape.b.x);
-                const x1 = Math.max(shape.a.x, shape.b.x);
+                const x1 = shape.extendTo ?? Math.max(shape.a.x, shape.b.x);
                 const prices = fibPrices(d.a, d.b);
                 // Filled bands between levels (each in the colour of its upper level).
                 for (let i = 0; i + 1 < FIB_LEVELS.length; i++) {

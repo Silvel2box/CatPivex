@@ -23,8 +23,11 @@ export type Drawing =
   | (Base & { type: 'hline'; price: number })
   | (Base & { type: 'vline'; time: number })
   | (Base & { type: 'trendline' | 'rect'; a: Anchor; b: Anchor })
-  /** fill = opacity (0..1) of the bands between levels; missing -> FIB_FILL_ALPHA. */
-  | (Base & { type: 'fib'; a: Anchor; b: Anchor; fill?: number });
+  /**
+   * fill = opacity (0..1) of the bands between levels; missing -> FIB_FILL_ALPHA.
+   * extend = level lines run to the right edge of the chart instead of stopping at the anchors.
+   */
+  | (Base & { type: 'fib'; a: Anchor; b: Anchor; fill?: number; extend?: boolean });
 
 /** Anchor count per tool: 1 = one click, 2 = click start, click end. */
 export const ANCHOR_COUNT: Record<DrawingType, 1 | 2> = {
@@ -83,8 +86,11 @@ export type PixelShape =
   | { type: 'vline'; x: number }
   | { type: 'trendline'; a: Point; b: Point }
   | { type: 'rect'; a: Point; b: Point }
-  /** levelYs[i] is the y of FIB_LEVELS[i]; lines span min(a.x,b.x)..max(a.x,b.x). */
-  | { type: 'fib'; a: Point; b: Point; levelYs: number[] };
+  /**
+   * levelYs[i] is the y of FIB_LEVELS[i]; lines span min(a.x,b.x)..max(a.x,b.x), or to
+   * `extendTo` (the pane's right edge) when the fib is extended.
+   */
+  | { type: 'fib'; a: Point; b: Point; levelYs: number[]; extendTo?: number };
 
 /** Which part was hit: an anchor handle (drag that anchor) or the body (move the whole drawing). */
 export type HitPart = 'a' | 'b' | 'body';

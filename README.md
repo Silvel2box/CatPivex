@@ -71,6 +71,11 @@ Test IDs (T1.1, T1.2, …) in test names match the test list in the project trac
 - Hovering a drawing shows its handles. While you draw, and for the selected drawing, its anchor prices and times are labelled on the axes. A Fibonacci retracement has filled bands, so you can grab it anywhere inside.
 - With a tool active, a dot (and its price/time on the axes) shows where the click will land. Fibonacci points snap to a wick's high or low within 15 px, even with the magnet off. End points can be grabbed from 10 px away.
 - Fibonacci background opacity (0–50%) is set per drawing in the toolbar while it is selected.
+- Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) undo and redo drawing changes per symbol; a whole drag is one step.
+- Hold Shift while drawing or dragging a trend line end to keep it horizontal, vertical or at 45°.
+- Right-click a drawing for its menu (Delete; for Fibonacci also Reverse and Extend lines right). The same Fibonacci options are in the toolbar.
+- Watchlist "+" opens a search: add any symbol without switching the chart (it stays open to add several).
+- The Lightweight Charts licence link is shown under the watchlist instead of the logo on the chart.
 - Drawings are anchored by (time, price) and saved per symbol. They stay at the same time and price when you change timeframe, even at a time with no bar (for example 13:30 drawn on 1h and shown on 1D).
 - The layout is saved and comes back after a reload: symbol, timeframe, indicators with their settings, volume and magnet. It is saved 0.5 s after the last change.
 - e2e tests reset the saved layout before each test (`e2e/fixtures.ts`).

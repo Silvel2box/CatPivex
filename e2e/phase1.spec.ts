@@ -92,6 +92,11 @@ test('T1.10c scrolling to the left edge loads older bars', async ({ page }) => {
   expect(s1.firstTime!).toBeLessThan(s0.firstTime!);
 });
 
-test('TX.4 Lightweight Charts attribution link is shown', async ({ page }) => {
-  await expect(page.locator('[data-testid="chart"] a[href*="tradingview.com"]')).toHaveCount(1);
+test('TX.4 Lightweight Charts attribution: no logo on the chart, credit link on the page', async ({
+  page,
+}) => {
+  await expect(page.locator('[data-testid="chart"] a[href*="tradingview.com"]')).toHaveCount(0);
+  const link = page.getByTestId('chart-attribution').locator('a[href="https://www.tradingview.com/"]');
+  await expect(link).toBeVisible();
+  await expect(link).toHaveText('TradingView Lightweight Charts™');
 });

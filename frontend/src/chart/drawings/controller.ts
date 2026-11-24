@@ -2,7 +2,7 @@ import type { IChartApi } from 'lightweight-charts';
 import type { Candle } from '../../api/types';
 import { newDrawingId, useDrawingStore } from '../../store/drawingStore';
 import type { DrawingsPrimitive } from './DrawingsPrimitive';
-import { hitTestAll, magnetSnap, moveDrawing } from './geometry';
+import { constrainAngle, hitTestAll, magnetSnap, moveDrawing } from './geometry';
 import {
   ANCHOR_COUNT,
   DEFAULT_COLOR,
@@ -53,7 +53,8 @@ const isTyping = (t: EventTarget | null) =>
 export class DrawingController {
   private pending: { tool: DrawingType; a: Anchor; downAt: Point } | null = null;
   private preview: Drawing | null = null;
-  private drag: { orig: Drawing; part: HitPart; start: Anchor } | null = null;
+  /** `moved`: the undo checkpoint is taken on the first move, so a plain click adds no step. */
+  private drag: { orig: Drawing; part: HitPart; start: Anchor; moved: boolean } | null = null;
   private hoveredId: string | null = null;
   /** Where a click would place a point while a tool is active (null otherwise). */
   private ghost: Anchor | null = null;
@@ -87,6 +88,7 @@ export class DrawingController {
     on(window, 'mousemove', (e) => this.onMove(e));
     on(window, 'mouseup', (e) => this.onUp(e));
     on(window, 'keydown', (e) => this.onKey(e));
+    on(container, 'contextmenu', (e) => this.onContextMenu(e), true);
 
     let prevTool = useDrawingStore.getState().tool;
     this.cleanup.push(
@@ -161,7 +163,9 @@ export class DrawingController {
       e.stopPropagation();
       e.preventDefault();
       if (store.loading) return;
-      const a = this.anchorAt(p, true, (this.pending?.tool ?? store.tool) === 'fib');
+      const a = this.pending
+        ? this.endAnchor(e, p, this.pending.tool, this.pending.a)
+        : this.anchorAt(p, true, store.tool === 'fib');
       if (!a) return;
       this.ghost = null;
       if (this.pending) {
@@ -186,7 +190,7 @@ export class DrawingController {
     const orig = store.drawings.find((d) => d.id === hit.id);
     const start = this.anchorAt(p, false);
     store.select(hit.id);
-    if (orig && start) this.drag = { orig, part: hit.part, start };
+    if (orig && start) this.drag = { orig, part: hit.part, start, moved: false };
   }
 
   private onMove(e: MouseEvent): void {
@@ -197,18 +201,62 @@ export class DrawingController {
     const r = this.container.getBoundingClientRect();
     const p = { x: e.clientX - r.left, y: e.clientY - r.top }; // may leave the pane mid-drag
     if (this.pending) {
-      const b = this.anchorAt(p, true, this.pending.tool === 'fib');
+      const b = this.endAnchor(e, p, this.pending.tool, this.pending.a);
       if (!b) return;
       this.preview = makeDrawing(this.pending.tool, this.pending.a, b, 'preview');
       this.render();
       return;
     }
     const drag = this.drag!;
+    const o = drag.orig;
     const cur = this.anchorAt(p, false);
-    const to = this.anchorAt(p, true, drag.orig.type === 'fib' && drag.part !== 'body');
+    const other = 'a' in o ? (drag.part === 'a' ? o.b : o.a) : null;
+    const to =
+      drag.part === 'body' || !other ? this.anchorAt(p, true) : this.endAnchor(e, p, o.type, other);
     if (!cur || !to) return;
+    const store = useDrawingStore.getState();
+    if (!drag.moved) {
+      drag.moved = true;
+      store.checkpoint(); // the whole drag is one undo step
+    }
     const delta = { dTime: cur.time - drag.start.time, dPrice: cur.price - drag.start.price };
-    useDrawingStore.getState().update(moveDrawing(drag.orig, drag.part, delta, to));
+    store.update(moveDrawing(o, drag.part, delta, to));
+  }
+
+  /**
+   * A moving end point of a 2-point drawing (`fixed` = the other end). Shift on a trend line
+   * keeps it horizontal, vertical or at 45° on screen; fib points snap to wicks; otherwise as
+   * `anchorAt`.
+   */
+  private endAnchor(e: MouseEvent, p: Point, type: Drawing['type'], fixed: Anchor): Anchor | null {
+    if (e.shiftKey && type === 'trendline') {
+      const fx = this.primitive.timeToX(fixed.time);
+      const fy = this.primitive.priceToY(fixed.price);
+      if (fx !== null && fy !== null)
+        return this.anchorAt(constrainAngle({ x: fx, y: fy }, p), false);
+    }
+    return this.anchorAt(p, true, type === 'fib');
+  }
+
+  /** Right click on a drawing: its menu. While drawing: cancel. Elsewhere: the browser's menu. */
+  private onContextMenu(e: MouseEvent): void {
+    const store = useDrawingStore.getState();
+    if (this.pending || store.tool) {
+      e.preventDefault();
+      store.setTool(null);
+      return;
+    }
+    const p = this.local(e);
+    const hit = p
+      ? hitTestAll(this.primitive.shapes(), p.x, p.y, HIT_TOLERANCE, HANDLE_TOLERANCE)
+      : null;
+    if (!hit) {
+      store.closeMenu();
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    store.openMenu(hit.id, e.clientX, e.clientY);
   }
 
   /**
@@ -242,7 +290,7 @@ export class DrawingController {
     const p = { x: e.clientX - r.left, y: e.clientY - r.top };
     const { downAt } = this.pending;
     if (Math.hypot(p.x - downAt.x, p.y - downAt.y) <= DRAG_FINISH_PX) return; // click: wait for 2nd
-    const b = this.anchorAt(p, true, this.pending.tool === 'fib');
+    const b = this.endAnchor(e, p, this.pending.tool, this.pending.a);
     if (b) this.finish(b);
   }
 
@@ -261,9 +309,21 @@ export class DrawingController {
       store.setTool(TOOL_KEYS[e.code]);
       return;
     }
-    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+      const k = e.key.toLowerCase();
+      const undo = k === 'z' && !e.shiftKey;
+      const redo = k === 'y' || (k === 'z' && e.shiftKey);
+      if (!undo && !redo) return;
+      e.preventDefault();
+      if (this.pending || store.tool) store.setTool(null); // drop a half-drawn drawing first
+      if (undo) store.undo();
+      else store.redo();
+      return;
+    }
+    if (e.altKey) return;
     if (e.key === 'Escape') {
-      if (this.pending || store.tool) store.setTool(null);
+      if (store.menu) store.closeMenu();
+      else if (this.pending || store.tool) store.setTool(null);
       else if (store.selectedId) store.select(null);
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && store.selectedId) {
       e.preventDefault();

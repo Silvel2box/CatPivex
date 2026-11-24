@@ -97,7 +97,10 @@ export function hitTestShape(
       if (distToSegment(a, b, x, y) <= tol) return 'body';
       const ys = shape.levelYs;
       if (ys.length === 0) return null;
-      return distToBox(a.x, Math.min(...ys), b.x, Math.max(...ys), x, y) <= tol ? 'body' : null;
+      const right = Math.max(a.x, b.x, shape.extendTo ?? -Infinity);
+      return distToBox(Math.min(a.x, b.x), Math.min(...ys), right, Math.max(...ys), x, y) <= tol
+        ? 'body'
+        : null;
     }
   }
 }
@@ -115,6 +118,22 @@ export function hitTestAll(
     if (part) return { id: shapes[i].id, part };
   }
   return null;
+}
+
+/**
+ * Shift-drawing: keeps `to` on the nearest multiple of 45° from `from` (horizontal, vertical or
+ * diagonal on screen), projected so the distance along that direction is kept.
+ */
+export function constrainAngle(from: Point, to: Point): Point {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  if (dx === 0 && dy === 0) return { ...to };
+  const step = Math.PI / 4;
+  const angle = Math.round(Math.atan2(dy, dx) / step) * step;
+  const cos = Math.round(Math.cos(angle) * 1e12) / 1e12; // exact 0 / ±1 / ±√½
+  const sin = Math.round(Math.sin(angle) * 1e12) / 1e12;
+  const len = dx * cos + dy * sin;
+  return { x: from.x + len * cos, y: from.y + len * sin };
 }
 
 /** Fib level prices, in FIB_LEVELS order (see FIB_LEVELS for the formula). */
@@ -192,11 +211,11 @@ function drawingOf(v: unknown): Drawing | null {
       const a = anchorOf(v.a);
       const b = anchorOf(v.b);
       if (!a || !b) return null;
-      // An invalid fill only loses the fill (-> default), not the whole drawing.
-      const fill = v.fill;
-      return typeof fill === 'number' && fill >= 0 && fill <= 1
-        ? { ...base, type, a, b, fill }
-        : { ...base, type, a, b };
+      // An invalid fill/extend only loses that field (-> default), not the whole drawing.
+      const fib: Drawing = { ...base, type, a, b };
+      if (typeof v.fill === 'number' && v.fill >= 0 && v.fill <= 1) fib.fill = v.fill;
+      if (v.extend === true) fib.extend = true;
+      return fib;
     }
     default:
       return null;
