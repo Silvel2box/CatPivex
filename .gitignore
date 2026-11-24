@@ -1,0 +1,25 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# data
+*.db
+*.db-journal
+*.sqlite
+
+# node
+node_modules/
+dist/
+coverage/
+
+# playwright
+test-results/
+playwright-report/

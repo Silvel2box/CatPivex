@@ -1,0 +1,18 @@
+{
+  "name": "catpivex",
+  "private": true,
+  "scripts": {
+    "setup": "npm run setup:api && npm run setup:web && npm install",
+    "setup:api": "cd backend && python -m venv .venv && .venv\\Scripts\\python -m pip install -r requirements-dev.txt",
+    "setup:web": "npm --prefix frontend install",
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "cd backend && .venv\\Scripts\\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload",
+    "dev:web": "npm --prefix frontend run dev",
+    "check": "npm run check:api && npm run check:web",
+    "check:api": "cd backend && .venv\\Scripts\\python -m ruff check . && .venv\\Scripts\\python -m ruff format --check . && .venv\\Scripts\\python -m pytest -q",
+    "check:web": "npm --prefix frontend run check"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.7"
+  }
+}
