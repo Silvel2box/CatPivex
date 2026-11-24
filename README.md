@@ -67,7 +67,8 @@ Test IDs (T1.1, T1.2, …) in test names match the test list in the project trac
   - Fibonacci retracement (Alt+F)
 - Click to place a drawing. Two-point tools take either two clicks or one press-drag-release. Esc cancels; Delete removes the selected drawing.
 - Click a drawing to select it. Drag its body to move it or an end point to reshape it, and change its colour or width in the toolbar. Dragging empty space still scrolls the chart.
-- The magnet (in the toolbar, on by default) snaps to the open, high, low or close of the nearest bar.
+- The magnet (in the toolbar, off by default) is weak: it snaps to the open, high, low or close of the nearest bar only when the mouse is within 10 px of it.
+- Hovering a drawing shows its handles. While you draw, and for the selected drawing, its anchor prices and times are labelled on the axes. A Fibonacci retracement has filled bands, so you can grab it anywhere inside.
 - Drawings are anchored by (time, price) and saved per symbol. They stay at the same time and price when you change timeframe, even at a time with no bar (for example 13:30 drawn on 1h and shown on 1D).
 - The layout is saved and comes back after a reload: symbol, timeframe, indicators with their settings, volume and magnet. It is saved 0.5 s after the last change.
 - e2e tests reset the saved layout before each test (`e2e/fixtures.ts`).
