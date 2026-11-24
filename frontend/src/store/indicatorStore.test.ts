@@ -14,6 +14,26 @@ describe('T3.6 indicator store', () => {
     expect(inst.params).toEqual(INDICATORS.macd.defaults);
     expect(inst.params).not.toBe(INDICATORS.macd.defaults);
     expect(inst.colors).toEqual({ hist: '#26a69a', macd: '#2962ff', signal: '#ff6d00' });
+    expect(inst.widths).toEqual({ macd: 1, signal: 1 }); // the histogram has no width
+  });
+
+  it('sets a line width of 1–4 px; rejects other widths and histogram lines', () => {
+    const id = store().add('macd');
+    expect(store().setWidth(id, 'macd', 3)).toBe(true);
+    const before = store().instances[0];
+    for (const [line, w] of [
+      ['macd', 0],
+      ['macd', 5],
+      ['macd', 2.5],
+      ['macd', NaN],
+      ['hist', 2],
+      ['nope', 2],
+    ] as const) {
+      expect(store().setWidth(id, line, w)).toBe(false);
+    }
+    expect(store().setWidth('missing', 'macd', 2)).toBe(false);
+    expect(store().instances[0]).toBe(before);
+    expect(before.widths).toEqual({ macd: 3, signal: 1 });
   });
 
   it('allows several instances of one type with independent params', () => {

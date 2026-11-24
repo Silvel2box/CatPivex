@@ -22,8 +22,14 @@ export interface CatpivexDebugIndicator {
   id: string;
   type: string;
   params: Record<string, number>;
-  /** Per line: points in the current run (0 when the calc failed) and the last one. */
-  lines: Record<string, { count: number; last: { time: number; value: number } | null }>;
+  /**
+   * Per line: points in the current run (0 when the calc failed), the last one, and the
+   * lineWidth read back from the chart series (undefined for histograms).
+   */
+  lines: Record<
+    string,
+    { count: number; last: { time: number; value: number } | null; width?: number }
+  >;
 }
 
 export interface CatpivexDebug {

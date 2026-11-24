@@ -17,6 +17,7 @@ function fakeChart() {
     setData(d: FakeSeries['data']): void;
     update(p: FakeSeries['data'][number]): void;
     applyOptions(o: Record<string, unknown>): void;
+    options(): Record<string, unknown>;
     createPriceLine(o: { price: number }): void;
     getPane(): { paneIndex(): number };
   }
@@ -42,6 +43,7 @@ function fakeChart() {
         applyOptions(o) {
           Object.assign(s.opts, o);
         },
+        options: () => s.opts,
         createPriceLine(o) {
           s.priceLines.push(o.price);
         },
@@ -106,6 +108,7 @@ const inst = (id: string, type: IndicatorInstance['type'], params: Params = {}) 
   type,
   params,
   colors: {},
+  widths: {},
   visible: true,
 });
 
@@ -144,6 +147,22 @@ describe('T3.7 IndicatorLayer (fake chart + fake runner)', () => {
     expect(calls).toHaveLength(5);
   });
 
+  it('line width: applied on create, changed without rerunning; histogram untouched', () => {
+    const { chart, panes } = fakeChart();
+    const { run, calls } = fakeRunner();
+    const layer = new IndicatorLayer(chart, run);
+    layer.setSource('BINANCE:BTCUSDT', '1m', BARS);
+    const c = { ...inst('c', 'macd'), widths: { macd: 2 } };
+    layer.setInstances([c]);
+    const [hist, macd, signal] = panes[1];
+    expect(macd.opts.lineWidth).toBe(2);
+    expect(signal.opts.lineWidth).toBe(1); // default when unset
+    expect(hist.opts.lineWidth).toBeUndefined();
+    layer.setInstances([{ ...c, widths: { macd: 2, signal: 4 } }]);
+    expect(signal.opts.lineWidth).toBe(4);
+    expect(calls).toHaveLength(1);
+  });
+
   it('realtime bars update series incrementally, without rerunning', () => {
     const { chart, panes } = fakeChart();
     const { run } = fakeRunner();
@@ -163,7 +182,11 @@ describe('T3.7 IndicatorLayer (fake chart + fake runner)', () => {
       { time: 120, value: 2 },
       { time: 180, value: -1 },
     ]);
-    expect(layer.debug()[0].lines.macd).toEqual({ count: 3, last: { time: 180, value: -1 } });
+    expect(layer.debug()[0].lines.macd).toEqual({
+      count: 3,
+      last: { time: 180, value: -1 },
+      width: 1,
+    });
   });
 
   it('hides intradayOnly on 1D/1W; a throwing runner logs once and leaves empty series', () => {

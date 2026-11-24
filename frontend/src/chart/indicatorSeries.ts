@@ -4,10 +4,11 @@ import {
   LineStyle,
   type IChartApi,
   type ISeriesApi,
+  type LineWidth,
   type UTCTimestamp,
 } from 'lightweight-charts';
 import type { Candle, Interval } from '../api/types';
-import type { IndicatorInstance } from '../store/indicatorStore';
+import { DEFAULT_LINE_WIDTH, type IndicatorInstance } from '../store/indicatorStore';
 import { activeInstances, toSeriesData, toSeriesPoint, type LegendSource } from './indicatorData';
 import {
   INDICATORS,
@@ -34,7 +35,7 @@ export interface IndicatorDebug {
   id: string;
   type: string;
   params: Record<string, number>;
-  lines: Record<string, { count: number; last: LinePoint | null }>;
+  lines: Record<string, { count: number; last: LinePoint | null; width?: number }>;
 }
 
 const asData = (points: { time: number; value: number; color?: string }[]) =>
@@ -119,7 +120,11 @@ export class IndicatorLayer {
       lines: Object.fromEntries(
         e.def.lines.map((l) => {
           const pts = e.run?.lines[l.key] ?? [];
-          return [l.key, { count: pts.length, last: pts[pts.length - 1] ?? null }];
+          const opts = e.series[l.key].options() as { lineWidth?: number };
+          return [
+            l.key,
+            { count: pts.length, last: pts[pts.length - 1] ?? null, width: opts.lineWidth },
+          ];
         }),
       ),
     }));
@@ -131,6 +136,10 @@ export class IndicatorLayer {
 
   private color(e: Entry, line: string): string {
     return e.inst.colors[line] ?? e.def.lines.find((l) => l.key === line)!.color;
+  }
+
+  private width(e: Entry, line: string): LineWidth {
+    return (e.inst.widths[line] ?? DEFAULT_LINE_WIDTH) as LineWidth;
   }
 
   /** Returns the entries it (re)computed. */
@@ -154,9 +163,9 @@ export class IndicatorLayer {
         e.inst = inst;
         this.compute(e);
         computed.add(e);
-      } else if (e.inst.colors !== inst.colors) {
+      } else if (e.inst.colors !== inst.colors || e.inst.widths !== inst.widths) {
         e.inst = inst;
-        this.applyColors(e);
+        this.applyStyle(e);
       } else {
         e.inst = inst;
       }
@@ -179,7 +188,15 @@ export class IndicatorLayer {
       const s =
         line.kind === 'histogram'
           ? this.chart.addSeries(HistogramSeries, { ...common, color }, pane)
-          : this.chart.addSeries(LineSeries, { ...common, color, lineWidth: 1 }, pane);
+          : this.chart.addSeries(
+              LineSeries,
+              {
+                ...common,
+                color,
+                lineWidth: (inst.widths[line.key] ?? DEFAULT_LINE_WIDTH) as LineWidth,
+              },
+              pane,
+            );
       series[line.key] = s;
       pane = s.getPane().paneIndex();
     }
@@ -214,7 +231,7 @@ export class IndicatorLayer {
     }
   }
 
-  private applyColors(e: Entry): void {
+  private applyStyle(e: Entry): void {
     for (const line of e.def.lines) {
       const color = this.color(e, line.key);
       if (line.kind === 'histogram') {
@@ -222,7 +239,7 @@ export class IndicatorLayer {
         const points = e.run?.lines[line.key] ?? [];
         e.series[line.key].setData(asData(toSeriesData(line.kind, points, color)));
       } else {
-        e.series[line.key].applyOptions({ color });
+        e.series[line.key].applyOptions({ color, lineWidth: this.width(e, line.key) });
       }
     }
   }

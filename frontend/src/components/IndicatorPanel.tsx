@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { instanceLabel } from '../chart/indicatorData';
 import { INDICATORS, type IndicatorType, type ParamField, type Params } from '../chart/indicators';
-import { isValidParam, useIndicatorStore, type IndicatorInstance } from '../store/indicatorStore';
+import {
+  DEFAULT_LINE_WIDTH,
+  isValidParam,
+  LINE_WIDTHS,
+  useIndicatorStore,
+  type IndicatorInstance,
+} from '../store/indicatorStore';
 
 const TYPES = Object.keys(INDICATORS) as IndicatorType[];
 
@@ -47,7 +53,7 @@ function ParamInput({
 }
 
 function InstanceRow({ inst }: { inst: IndicatorInstance }) {
-  const { remove, updateParams, setColor, toggleVisible } = useIndicatorStore.getState();
+  const { remove, updateParams, setColor, setWidth, toggleVisible } = useIndicatorStore.getState();
   const def = INDICATORS[inst.type];
   const commit = (patch: Params) => updateParams(inst.id, patch);
 
@@ -107,6 +113,22 @@ function InstanceRow({ inst }: { inst: IndicatorInstance }) {
               onChange={(e) => setColor(inst.id, l.key, e.target.value)}
               className="h-5 w-6 cursor-pointer rounded border border-[#2a2e39] bg-transparent p-0"
             />
+            {l.kind === 'line' && (
+              <select
+                data-testid={`ind-width-${l.key}`}
+                aria-label={`${l.label} width`}
+                title={`${l.label} width`}
+                value={inst.widths[l.key] ?? DEFAULT_LINE_WIDTH}
+                onChange={(e) => setWidth(inst.id, l.key, Number(e.target.value))}
+                className="rounded border border-[#2a2e39] bg-[#131722] px-0.5 py-0.5 text-[11px] text-[#d1d4dc] outline-none focus:border-[#2962ff]"
+              >
+                {LINE_WIDTHS.map((w) => (
+                  <option key={w} value={w}>
+                    {w}px
+                  </option>
+                ))}
+              </select>
+            )}
           </label>
         ))}
       </div>

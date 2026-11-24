@@ -12,6 +12,8 @@ export interface IndicatorInstance {
   params: Params;
   /** Colour per line key. */
   colors: Record<string, string>;
+  /** Width in px per line key ('line' kind only; histograms have none). */
+  widths: Record<string, number>;
   visible: boolean;
 }
 
@@ -24,6 +26,8 @@ interface IndicatorState {
   /** Merges `patch` into the params. Rejected (returns false, nothing changes) if any value is invalid. */
   updateParams: (id: string, patch: Params) => boolean;
   setColor: (id: string, line: string, color: string) => void;
+  /** Rejected (returns false) unless `width` is one of LINE_WIDTHS and `line` is a line, not a histogram. */
+  setWidth: (id: string, line: string, width: number) => boolean;
   toggleVisible: (id: string) => void;
   toggleVolume: () => void;
 }
@@ -39,6 +43,10 @@ export function validParams(def: IndicatorDef, params: Params): boolean {
   return def.params.every((f) => f.key in params && isValidParam(f, params[f.key]));
 }
 
+/** Lightweight Charts accepts 1–4 px. */
+export const LINE_WIDTHS = [1, 2, 3, 4] as const;
+export const DEFAULT_LINE_WIDTH = 1;
+
 let nextId = 1;
 
 export const useIndicatorStore = create<IndicatorState>()((set, get) => ({
@@ -48,8 +56,14 @@ export const useIndicatorStore = create<IndicatorState>()((set, get) => ({
     const def = INDICATORS[type];
     const id = `ind-${nextId++}`;
     const colors = Object.fromEntries(def.lines.map((l) => [l.key, l.color]));
+    const widths = Object.fromEntries(
+      def.lines.filter((l) => l.kind === 'line').map((l) => [l.key, DEFAULT_LINE_WIDTH]),
+    );
     set((s) => ({
-      instances: [...s.instances, { id, type, params: { ...def.defaults }, colors, visible: true }],
+      instances: [
+        ...s.instances,
+        { id, type, params: { ...def.defaults }, colors, widths, visible: true },
+      ],
     }));
     return id;
   },
@@ -70,6 +84,18 @@ export const useIndicatorStore = create<IndicatorState>()((set, get) => ({
         i.id === id ? { ...i, colors: { ...i.colors, [line]: color } } : i,
       ),
     })),
+  setWidth: (id, line, width) => {
+    const inst = get().instances.find((i) => i.id === id);
+    const lineDef = inst && INDICATORS[inst.type].lines.find((l) => l.key === line);
+    if (lineDef?.kind !== 'line' || !(LINE_WIDTHS as readonly number[]).includes(width))
+      return false;
+    set((s) => ({
+      instances: s.instances.map((i) =>
+        i.id === id ? { ...i, widths: { ...i.widths, [line]: width } } : i,
+      ),
+    }));
+    return true;
+  },
   toggleVisible: (id) =>
     set((s) => ({
       instances: s.instances.map((i) => (i.id === id ? { ...i, visible: !i.visible } : i)),

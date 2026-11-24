@@ -55,6 +55,7 @@ const inst = (id: string, type: IndicatorInstance['type'], visible = true): Indi
   type,
   params: {},
   colors: {},
+  widths: {},
   visible,
 });
 

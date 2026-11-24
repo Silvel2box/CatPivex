@@ -47,7 +47,7 @@ Test IDs (T1.1, T1.2, …) in test names match the test list in the project trac
 - Known: `app/data/set100.json` (offline SET search fallback) was written by hand and only approximates the current SET100.
 
 ### Phase 3: indicators ✅ (2026-11-24)
-- **Indicators** button: SMA, EMA, Bollinger Bands and VWAP draw on the price chart. RSI and MACD each get their own pane below it. Each one has its own length, colour and show/hide controls, and you can add the same type more than once (SMA 20 and SMA 50).
+- **Indicators** button: SMA, EMA, Bollinger Bands and VWAP draw on the price chart. RSI and MACD each get their own pane below it. Each one has its own length, colour, line width (1–4 px) and show/hide controls, and you can add the same type more than once (SMA 20 and SMA 50).
 - The legend at the top left shows OHLCV and every indicator value for the bar under the crosshair. When the mouse leaves the chart it shows the last bar.
 - Formulas follow Pine Script v5 and TA-Lib (`frontend/src/chart/indicators/FORMULAS.md`). VWAP resets on each market's own day: Binance and FX on UTC, SET on Bangkok time, US on New York time. It is hidden on 1D/1W.
 - Realtime bars update the indicators incrementally. A unit test checks that this matches a full recompute.

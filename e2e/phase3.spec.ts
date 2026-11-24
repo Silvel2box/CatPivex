@@ -34,6 +34,20 @@ test('T3.4 legend shows the hovered bar and the SMA value at that bar', async ({
   await expect(legend).toContainText(bars[i]!.close.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','));
 });
 
+test('T3.8 line width picked in the panel reaches the chart series; histogram has no picker', async ({
+  page,
+}) => {
+  await page.getByTestId('indicators-button').click();
+  await page.getByTestId('ind-add-macd').click();
+  const row = page.getByTestId('ind-instance').first();
+  await expect(row.getByTestId('ind-width-hist')).toHaveCount(0);
+  await expect.poll(() => hook(page, (h) => h.indicators()[0]?.lines.signal?.width)).toBe(1);
+  await row.getByTestId('ind-width-signal').selectOption('4');
+  await expect.poll(() => hook(page, (h) => h.indicators()[0]?.lines.signal?.width)).toBe(4);
+  expect(await hook(page, (h) => h.indicators()[0]?.lines.macd?.width)).toBe(1);
+  expect(await hook(page, (h) => h.indicators()[0]?.lines.signal?.count)).toBeGreaterThan(0);
+});
+
 test('T3.4b RSI and MACD get their own panes; removing them removes the panes', async ({ page }) => {
   const before = await hook(page, (h) => h.paneCount());
   await addIndicators(page, ['rsi', 'macd']);

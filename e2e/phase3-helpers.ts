@@ -7,7 +7,10 @@ export type Hook = {
     id: string;
     type: string;
     params: Record<string, number>;
-    lines: Record<string, { count: number; last: { time: number; value: number } | null }>;
+    lines: Record<
+      string,
+      { count: number; last: { time: number; value: number } | null; width?: number }
+    >;
   }[];
   xForTime(time: number): number | null;
   paneCount(): number;
