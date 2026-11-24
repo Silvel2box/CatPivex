@@ -71,6 +71,26 @@ test('T2.9g click a SET row → chart switches and shows Delayed; Binance has no
   expect((await state(page)).delayed).toBe(true);
 });
 
+test('T2.14 Delayed badge says "as of" the newest minute of data (any timeframe); Binance has none', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(60_000);
+  await expect(page.getByTestId('delayed-asof')).toHaveCount(0);
+  await row(page, 'SET:PTT').click();
+  await waitSymbolLoaded(page, 'SET:PTT');
+  await page.getByTestId('tf-1h').click(); // a timeframe whose last bar time would not say it
+  const asOf = page.getByTestId('delayed-asof');
+  await expect(asOf).toBeVisible({ timeout: 30_000 });
+  await expect(asOf).toContainText('as of');
+  const shown = Number(await asOf.getAttribute('data-time'));
+  const res = await request.get(`${API}/api/candles?symbol=SET:PTT&interval=1m&limit=1`);
+  const latest = (await res.json()).candles.at(-1).time as number;
+  // Same source; at most a minute apart if a new bar arrived between the two requests.
+  expect(Math.abs(latest - shown)).toBeLessThanOrEqual(60);
+  await expect(page.getByTestId('delayed-badge')).toHaveAttribute('title', /Latest data: .*(Bangkok)/);
+});
+
 test('T2.9h "+" searches and adds any symbol (chart stays put), remove a row, both persist after reload', async ({
   page,
   request,

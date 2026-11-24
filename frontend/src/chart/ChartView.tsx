@@ -3,10 +3,11 @@ import type { LogicalRange, MouseEventParams, UTCTimestamp } from 'lightweight-c
 import { fetchCandles } from '../api/client';
 import { INTERVAL_SECONDS, type Candle, type CandlesResponse, type Interval } from '../api/types';
 import { connectKlineStream, klineStreamUrl } from '../realtime/binanceWs';
-import { startLatestBarsPolling } from '../realtime/poll';
+import { startLatestBarsPolling, startPolling } from '../realtime/poll';
 import { useChartStore } from '../store/chartStore';
 import { useDrawingStore } from '../store/drawingStore';
 import { useIndicatorStore } from '../store/indicatorStore';
+import { asOfTitle, formatAsOf } from './asOf';
 import { DrawingController } from './drawings/controller';
 import { DrawingsPrimitive } from './drawings/DrawingsPrimitive';
 import { buildLegend } from './indicatorData';
@@ -27,6 +28,8 @@ const PAGE_SIZE = 500;
 const LOAD_MORE_THRESHOLD = 10;
 const POLL_MS = 60_000;
 const POLL_LIMIT = 3;
+/** How often the "Delayed · as of" time is refreshed (the newest 1m bar of the symbol). */
+const AS_OF_POLL_MS = 60_000;
 
 /** What the chart is currently showing; read by the dev-only E2E hook. */
 interface LiveState {
@@ -60,6 +63,15 @@ export function ChartView() {
   const volumeVisible = useIndicatorStore((s) => s.volumeVisible);
   const [source, setSource] = useState<SourceInfo | null>(null);
   const currentSource = source?.key === `${symbol}|${interval}` ? source : null;
+  const delayed = currentSource?.delayed === true;
+  // Delayed sources: the newest minute the source has, whatever the chart's timeframe (on 1h the
+  // last bar's time says nothing about how fresh it is). null time = the source returned nothing.
+  const [asOf, setAsOf] = useState<{
+    symbol: string;
+    time: number | null;
+    checkedAt: number;
+  } | null>(null);
+  const shownAsOf = asOf?.symbol === symbol ? asOf : null;
 
   // Chart lifetime = component lifetime.
   useEffect(() => {
@@ -303,19 +315,46 @@ export function ChartView() {
     };
   }, [symbol, interval]);
 
+  useEffect(() => {
+    if (!delayed) return;
+    return startPolling(
+      async (signal) => {
+        const res = await fetchCandles({ symbol, interval: '1m', limit: 1 }, signal);
+        if (signal.aborted) return;
+        setAsOf({ symbol, time: res.candles.at(-1)?.time ?? null, checkedAt: Date.now() });
+      },
+      AS_OF_POLL_MS,
+      { immediate: true },
+    );
+  }, [symbol, delayed]);
+
   const showWarning = currentSource?.warning && !currentSource.warningDismissed;
 
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} data-testid="chart" className="h-full w-full" />
       <div className="pointer-events-none absolute top-2 left-2 z-10 flex max-w-[60%] flex-col items-start gap-1 text-xs">
-        {currentSource?.delayed && (
+        {delayed && (
           <span
             data-testid="delayed-badge"
-            title="Data from this source is delayed, not realtime"
-            className="rounded border border-[#f9a825]/60 bg-[#131722]/90 px-1.5 py-0.5 font-medium text-[#f9a825]"
+            title={
+              shownAsOf
+                ? asOfTitle(shownAsOf.time, shownAsOf.checkedAt)
+                : 'Data from this source is delayed (about 15 min), not realtime'
+            }
+            className="pointer-events-auto rounded border border-[#f9a825]/60 bg-[#131722]/90 px-1.5 py-0.5 font-medium text-[#f9a825]"
           >
             Delayed
+            {shownAsOf?.time != null && (
+              <span
+                data-testid="delayed-asof"
+                data-time={shownAsOf.time}
+                className="font-normal text-[#d1d4dc]"
+              >
+                {' · as of '}
+                {formatAsOf(shownAsOf.time)}
+              </span>
+            )}
           </span>
         )}
         {showWarning && (

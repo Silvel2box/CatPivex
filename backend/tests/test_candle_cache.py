@@ -4,6 +4,7 @@ import pytest
 
 from app.adapters.registry import Registry
 from app.db import Database
+from app.models import Candle
 from app.services.candles import CandleService, align
 from tests.conftest import NOW, FakeAdapter
 
@@ -85,3 +86,37 @@ def test_weekly_slots_open_on_monday(db):
         1_699_833_600 - 604800,
         1_699_833_600,
     ]
+
+
+class ClosedMarketAdapter(FakeAdapter):
+    """Delayed source whose newest 1m bar is `last` (market closed / data delayed since)."""
+
+    def __init__(self, last: int):
+        super().__init__()
+        self.last = last
+
+    def is_realtime(self) -> bool:
+        return False
+
+    def get_candles(self, ticker, interval, start, end, limit):
+        self.calls.append((ticker, interval, start, end, limit))
+        s = 60
+        hi = min(end, self.last + s)
+        return [
+            Candle(time=t, open=1, high=2, low=0.5, close=1.5, volume=1)
+            for t in range(align(start + s - 1, "1m"), hi, s)
+        ]
+
+
+@pytest.mark.parametrize(
+    "gap_hours", [0.25, 6, 64, 24 * 5], ids=["15min-delay", "overnight", "weekend", "5-day-holiday"]
+)
+@pytest.mark.parametrize("limit", [1, 3])
+def test_T2_14_latest_small_limit_reaches_back_over_empty_gaps(db, gap_hours, limit):
+    # Newest bar is gap_hours old: limit=1 (the "as of" badge) and limit=3 (polling) must still
+    # find it, not give up after a few doublings of a 1-minute window.
+    last = align(NOW - int(gap_hours * 3600), "1m")
+    adapter = ClosedMarketAdapter(last)
+    service = CandleService(db, Registry({"SET": adapter}), clock=lambda: NOW)
+    res = service.get_candles("SET:PTT", "1m", None, limit)
+    assert [k.time for k in res.candles] == [last - (limit - 1 - i) * 60 for i in range(limit)]

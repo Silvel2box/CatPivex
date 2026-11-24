@@ -40,7 +40,7 @@ Test IDs (T1.1, T1.2, …) in test names match the test list in the project trac
 
 ### Phase 2: multiple markets + watchlist ✅ (2026-11-24)
 - Symbol search box (click the symbol, or just start typing on the chart): Binance USDT pairs, SET (`SET:PTT`), US (`US:AAPL`), FX/metals (`FX:XAUUSD` = gold futures `GC=F`, `FX:USDTHB`).
-- Yahoo adapter via yfinance (delayed ~15 min, "Delayed" badge, 60 s polling). 4h for stocks is resampled from 1h, starting at each day's first bar.
+- Yahoo adapter via yfinance (delayed ~15 min, 60 s polling). The "Delayed · as of 24 Nov, 16:20" badge shows the newest minute the source has (Bangkok time, refreshed every 60 s, on any timeframe); hover it for the full date and when it was last checked. 4h for stocks is resampled from 1h, starting at each day's first bar.
 - Cache remembers fetched ranges, so nights/weekends don't cause refetches. 1D/1W candles are stamped 00:00 UTC of the trading date and shown as UTC dates.
 - Watchlist on the right: price + change % vs the previous daily close (refreshes every 30 s), add current symbol (+), remove (×), drag to reorder. Stored in SQLite.
 - Known: yfinance's HTTP client (curl_cffi) resolves DNS with its own c-ares resolver, which sometimes stalls. The connect timeout is 3 s, so a stall costs about 4 s instead of 12 s (see `backend/app/adapters/yahoo.py` `_yf`).

@@ -12,8 +12,9 @@ Algorithm:
    coverage. Unclosed ones are returned, never stored; for delayed sources they are kept in
    memory for 60 s, so polling the latest candles does not hit upstream every time.
 4. If the window holds fewer than `limit` candles (sessions, gaps), it is widened from the
-   observed density and step 2 repeats (max 5 rounds) until `limit` candles, the source's
-   earliest time (-> `warning`) or the epoch. The last `limit` are returned ascending.
+   observed density (or by MAX_GROWTH when it holds none) and step 2 repeats (max 5 rounds)
+   until `limit` candles, the source's earliest time (-> `warning`) or the epoch.
+   The last `limit` are returned ascending.
 5. Upstream failure (AdapterError upstream_error / rate_limited): no more fetches; the window
    keeps widening over the cache only. Cached candles are returned with `warning`; if there are
    none the error propagates (502 / 503).
@@ -117,8 +118,14 @@ class CandleService:
             if len(merged) >= limit or lo <= floor:
                 break
             window = stop - lo
-            grow = math.ceil(window * limit / max(len(merged), 1) * 1.25)
-            window = min(max(grow, 2 * window), MAX_GROWTH * window)
+            if merged:
+                grow = math.ceil(window * limit / len(merged) * 1.25)
+                window = min(max(grow, 2 * window), MAX_GROWTH * window)
+            else:
+                # Nothing found yet, so no density to estimate from: widen as fast as allowed.
+                # (Estimating as if one candle was found made a small limit only double, so
+                # limit=1 gave up after ~16 min of empty 1m slots: nights, weekends, delay.)
+                window = MAX_GROWTH * window
             lo = max(align(stop - window, interval), origin)
 
         candles = [merged[t] for t in sorted(merged)][-limit:]
