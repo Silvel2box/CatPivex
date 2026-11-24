@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Page } from './fixtures';
 
 // Uses the e2e DB (see playwright.config.ts); the list is still saved/restored so tests stay independent.
 import { E2E_API as API } from '../playwright.config';

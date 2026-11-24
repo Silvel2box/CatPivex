@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './fixtures';
 
 // Reads the dev-only hook exposed by the frontend (window.__catpivex).
 type Bar = { time: number; open: number; high: number; low: number; close: number; volume: number };

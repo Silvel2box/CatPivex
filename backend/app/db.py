@@ -1,10 +1,12 @@
-"""SQLite storage: closed candles, which time ranges were fetched (coverage), the watchlist."""
+"""SQLite storage: closed candles, which time ranges were fetched (coverage), the watchlist,
+drawings per symbol and the chart layout."""
 
+import json
 import sqlite3
 from contextlib import closing
 from pathlib import Path
 
-from app.models import DEFAULT_WATCHLIST, Candle
+from app.models import DEFAULT_WATCHLIST, Candle, JsonObject
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS candles (
@@ -31,11 +33,22 @@ CREATE TABLE IF NOT EXISTS watchlist (
     symbol   TEXT    PRIMARY KEY,
     position INTEGER NOT NULL
 );
+-- meta keys: 'watchlist_seeded', 'layout' (JSON object of the last chart layout)
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+-- data = JSON array of the symbol's drawings, stored verbatim
+CREATE TABLE IF NOT EXISTS drawings (
+    symbol TEXT PRIMARY KEY,
+    data   TEXT NOT NULL
+);
 """
+
+
+def _dumps(value: object) -> str:
+    """Strict JSON: raises ValueError on NaN/Infinity, which would make the value unreadable."""
+    return json.dumps(value, ensure_ascii=False, allow_nan=False)
 
 
 class Database:
@@ -153,3 +166,33 @@ class Database:
     def remove_from_watchlist(self, symbol: str) -> None:
         with closing(self._connect()) as conn, conn:
             conn.execute("DELETE FROM watchlist WHERE symbol = ?", (symbol,))
+
+    # --- drawings / layout (opaque JSON) ----------------------------------------------------
+
+    def get_drawings(self, symbol: str) -> list[JsonObject]:
+        with closing(self._connect()) as conn:
+            row = conn.execute("SELECT data FROM drawings WHERE symbol = ?", (symbol,)).fetchone()
+        return json.loads(row[0]) if row else []
+
+    def set_drawings(self, symbol: str, drawings: list[JsonObject]) -> None:
+        """Replaces the whole list. Raises ValueError if it holds NaN/Infinity."""
+        data = _dumps(drawings)
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO drawings (symbol, data) VALUES (?, ?)", (symbol, data)
+            )
+
+    def delete_drawings(self, symbol: str) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.execute("DELETE FROM drawings WHERE symbol = ?", (symbol,))
+
+    def get_layout(self) -> JsonObject | None:
+        with closing(self._connect()) as conn:
+            row = conn.execute("SELECT value FROM meta WHERE key = 'layout'").fetchone()
+        return json.loads(row[0]) if row else None
+
+    def set_layout(self, layout: JsonObject) -> None:
+        """Raises ValueError if it holds NaN/Infinity."""
+        data = _dumps(layout)
+        with closing(self._connect()) as conn, conn:
+            conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('layout', ?)", (data,))

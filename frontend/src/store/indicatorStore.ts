@@ -30,6 +30,8 @@ interface IndicatorState {
   setWidth: (id: string, line: string, width: number) => boolean;
   toggleVisible: (id: string) => void;
   toggleVolume: () => void;
+  /** Saved layout: replaces everything; new ids continue after the restored ones. */
+  restore: (instances: IndicatorInstance[], volumeVisible: boolean) => void;
 }
 
 /** A value is valid when finite, within [min, max] and on the step grid from min. */
@@ -101,4 +103,11 @@ export const useIndicatorStore = create<IndicatorState>()((set, get) => ({
       instances: s.instances.map((i) => (i.id === id ? { ...i, visible: !i.visible } : i)),
     })),
   toggleVolume: () => set((s) => ({ volumeVisible: !s.volumeVisible })),
+  restore: (instances, volumeVisible) => {
+    for (const i of instances) {
+      const n = Number(/^ind-(d+)$/.exec(i.id)?.[1]);
+      if (n >= nextId) nextId = n + 1;
+    }
+    set({ instances, volumeVisible });
+  },
 }));

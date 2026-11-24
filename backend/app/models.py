@@ -25,12 +25,22 @@ GET /api/quotes?symbols=BINANCE:BTCUSDT,SET:PTT -> list[Quote], same order as re
   price = latest close; change/change_percent vs the previous 1D candle's close.
   A symbol that fails has price null and `error` set; the others still return.
 
+Drawings per symbol (opaque JSON objects; the frontend validates them on load):
+  GET    /api/drawings/{symbol}    -> DrawingsResponse, drawings [] if none saved
+  PUT    /api/drawings/{symbol}    body {"drawings": [{...}, ...]} (max MAX_DRAWINGS) -> replaces
+  DELETE /api/drawings/{symbol}    -> drawings [] (no-op if none saved; format check only)
+  GET/PUT take a symbol in any case (or with %3A for the colon) and answer with the canonical one.
+
+Chart layout (one opaque JSON object):
+  GET /api/layout                  -> LayoutResponse, layout null until the first save
+  PUT /api/layout                  body {"layout": {...}} ({} is allowed) -> stored layout
+
 Every error response (any status >= 400) has the body ErrorResponse.
 """
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 Interval = Literal["1m", "5m", "15m", "1h", "4h", "1D", "1W"]
 INTERVALS: tuple[str, ...] = ("1m", "5m", "15m", "1h", "4h", "1D", "1W")
@@ -117,3 +127,25 @@ class Quote(BaseModel):
     time: int | None  # open time of the candle `price` comes from
     delayed: bool
     error: ErrorBody | None = None
+
+
+MAX_DRAWINGS = 1000
+
+JsonObject = dict[str, Any]  # stored and returned as-is, never interpreted by the backend
+
+
+class DrawingsBody(BaseModel):
+    drawings: list[JsonObject] = Field(max_length=MAX_DRAWINGS)
+
+
+class DrawingsResponse(BaseModel):
+    symbol: str
+    drawings: list[JsonObject]
+
+
+class LayoutBody(BaseModel):
+    layout: JsonObject
+
+
+class LayoutResponse(BaseModel):
+    layout: JsonObject | None

@@ -36,7 +36,8 @@ export async function addIndicators(page: Page, types: string[]) {
   await page.getByTestId('indicators-button').click();
   for (const t of types) await page.getByTestId(`ind-add-${t}`).click();
   await page.keyboard.press('Escape');
-  await page.mouse.click(5, 300); // also close by clicking outside if Escape isn't handled
+  // No blind 'click outside': x=5 now lands on the drawing toolbar.
+  await expect(page.getByTestId('indicator-panel')).toHaveCount(0);
 }
 
 export async function openApp(page: Page) {

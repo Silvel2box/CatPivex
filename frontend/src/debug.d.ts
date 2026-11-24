@@ -1,4 +1,5 @@
 import type { Candle, Interval } from './api/types';
+import type { Drawing, DrawingType, PixelShape } from './chart/drawings/types';
 
 export interface CatpivexDebugState {
   symbol: string;
@@ -40,6 +41,20 @@ export interface CatpivexDebug {
   xForTime(time: number): number | null;
   /** Chart panes: 1 (candles + main-pane indicators) + one per sub-pane indicator. */
   paneCount(): number;
+  /** Drawing store + current pixel shapes (pane px) of the drawings in draw order. */
+  drawings(): {
+    symbol: string | null;
+    loading: boolean;
+    tool: DrawingType | null;
+    selectedId: string | null;
+    magnet: boolean;
+    drawings: Drawing[];
+    shapes: { id: string; shape: PixelShape }[];
+  };
+  /** x for any time (interpolated between bars), pane px; null without data. */
+  timeToX(time: number): number | null;
+  /** y of a price on the candle pane, pane px. */
+  priceToY(price: number): number | null;
 }
 
 declare global {

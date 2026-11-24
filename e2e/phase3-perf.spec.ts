@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { addIndicators, hook, openApp } from './phase3-helpers';
 
 // Headed window: headless has no real compositor, so its frame rate means nothing.

@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LogicalRange, MouseEventParams, UTCTimestamp } from 'lightweight-charts';
 import { fetchCandles } from '../api/client';
-import type { Candle, CandlesResponse, Interval } from '../api/types';
+import { INTERVAL_SECONDS, type Candle, type CandlesResponse, type Interval } from '../api/types';
 import { connectKlineStream, klineStreamUrl } from '../realtime/binanceWs';
 import { startLatestBarsPolling } from '../realtime/poll';
 import { useChartStore } from '../store/chartStore';
+import { useDrawingStore } from '../store/drawingStore';
 import { useIndicatorStore } from '../store/indicatorStore';
+import { DrawingController } from './drawings/controller';
+import { DrawingsPrimitive } from './drawings/DrawingsPrimitive';
 import { buildLegend } from './indicatorData';
 import { IndicatorLayer } from './indicatorSeries';
 import { Legend, createLegendFeed } from './Legend';
@@ -66,6 +69,20 @@ export function ChartView() {
     layer.setInstances(useIndicatorStore.getState().instances);
     layerRef.current = layer;
 
+    // Drawings: rendered by a primitive on the candle series, edited by the controller.
+    const getBars = () => liveRef.current?.bars ?? [];
+    const drawings = new DrawingsPrimitive(
+      getBars,
+      () => INTERVAL_SECONDS[liveRef.current?.interval ?? '1m'],
+    );
+    handles.candles.attachPrimitive(drawings);
+    const controller = new DrawingController(
+      containerRef.current!,
+      handles.chart,
+      drawings,
+      getBars,
+    );
+
     // Legend follows the crosshair; off the chart it shows the last bar.
     let hoverTime: number | null = null;
     const refreshLegend = () => {
@@ -107,6 +124,20 @@ export function ChartView() {
         indicators: () => layer.debug(),
         xForTime: (time) => handles.chart.timeScale().timeToCoordinate(time as UTCTimestamp),
         paneCount: () => handles.chart.panes().length,
+        drawings: () => {
+          const s = useDrawingStore.getState();
+          return {
+            symbol: s.symbol,
+            loading: s.loading,
+            tool: s.tool,
+            selectedId: s.selectedId,
+            magnet: s.magnet,
+            drawings: s.drawings,
+            shapes: drawings.shapes(),
+          };
+        },
+        timeToX: (time) => drawings.timeToX(time),
+        priceToY: (price) => handles.candles.priceToCoordinate(price),
       };
     }
 
@@ -115,6 +146,7 @@ export function ChartView() {
       handlesRef.current = null;
       layerRef.current = null;
       refreshLegendRef.current = () => {};
+      controller.dispose();
       handles.chart.unsubscribeCrosshairMove(onCrosshair);
       handles.chart.remove();
     };

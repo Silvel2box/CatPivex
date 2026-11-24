@@ -1,10 +1,17 @@
 import { API_BASE, ApiError } from './client';
 import type { ErrorResponse, Quote, Watchlist } from './types';
 
-async function requestJson<T>(
+/** JSON request with the project error format turned into ApiError. */
+export async function requestJson<T>(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   path: string,
-  options: { params?: Record<string, string>; body?: unknown; signal?: AbortSignal } = {},
+  options: {
+    params?: Record<string, string>;
+    body?: unknown;
+    signal?: AbortSignal;
+    /** Lets a save finish while the page unloads. */
+    keepalive?: boolean;
+  } = {},
 ): Promise<T> {
   const url = new URL(path, API_BASE);
   for (const [key, value] of Object.entries(options.params ?? {})) {
@@ -13,6 +20,7 @@ async function requestJson<T>(
   const res = await fetch(url, {
     method,
     signal: options.signal,
+    keepalive: options.keepalive,
     headers: options.body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });

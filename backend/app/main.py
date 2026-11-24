@@ -17,7 +17,7 @@ from app.config import Settings, load_settings
 from app.db import Database
 from app.errors import ApiError
 from app.models import ErrorCode
-from app.routers import market, watchlist
+from app.routers import drawings, market, watchlist
 from app.services.candles import CandleService
 
 log = logging.getLogger(__name__)
@@ -59,6 +59,7 @@ def create_app(
     app.state.candle_service = CandleService(app.state.db, registry, clock)
     app.include_router(market.router)
     app.include_router(watchlist.router)
+    app.include_router(drawings.router)
 
     @app.exception_handler(ApiError)
     async def api_error_handler(_: Request, exc: ApiError) -> JSONResponse:

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { E2E_API } from '../playwright.config';
 import { addIndicators, hook, openApp, waitLoaded, type Hook } from './phase3-helpers';
 

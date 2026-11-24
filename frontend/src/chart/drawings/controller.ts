@@ -1,0 +1,210 @@
+import type { IChartApi } from 'lightweight-charts';
+import type { Candle } from '../../api/types';
+import { newDrawingId, useDrawingStore } from '../../store/drawingStore';
+import type { DrawingsPrimitive } from './DrawingsPrimitive';
+import { hitTestAll, magnetSnap, moveDrawing } from './geometry';
+import {
+  ANCHOR_COUNT,
+  DEFAULT_COLOR,
+  HIT_TOLERANCE,
+  type Anchor,
+  type Drawing,
+  type DrawingType,
+  type HitPart,
+  type Point,
+} from './types';
+
+/** Alt+<key> picks a tool (event.code, so keyboard layout doesn't matter). */
+export const TOOL_KEYS: Record<string, DrawingType> = {
+  KeyH: 'hline',
+  KeyV: 'vline',
+  KeyT: 'trendline',
+  KeyR: 'rect',
+  KeyF: 'fib',
+};
+
+/** A press-drag-release longer than this (px) finishes a 2-point drawing on release. */
+const DRAG_FINISH_PX = 5;
+
+export function makeDrawing(tool: DrawingType, a: Anchor, b: Anchor, id = newDrawingId()): Drawing {
+  const base = { id, color: DEFAULT_COLOR[tool], width: 1 as const };
+  if (tool === 'hline') return { ...base, type: 'hline', price: a.price };
+  if (tool === 'vline') return { ...base, type: 'vline', time: a.time };
+  return { ...base, type: tool, a, b };
+}
+
+const isTyping = (t: EventTarget | null) =>
+  t instanceof HTMLElement &&
+  (t.isContentEditable || ['INPUT', 'SELECT', 'TEXTAREA'].includes(t.tagName));
+
+/**
+ * Mouse + keyboard for drawings on the candle pane. Listens on the chart container in the
+ * capture phase: when it handles a press (drawing, or grabbing a drawing) it stops the event,
+ * so the chart does not pan; otherwise the chart gets it as usual.
+ */
+export class DrawingController {
+  private pending: { tool: DrawingType; a: Anchor; downAt: Point } | null = null;
+  private preview: Drawing | null = null;
+  private drag: { orig: Drawing; part: HitPart; start: Anchor } | null = null;
+  private readonly cleanup: (() => void)[] = [];
+  private readonly container: HTMLElement;
+  private readonly chart: IChartApi;
+  private readonly primitive: DrawingsPrimitive;
+  private readonly getBars: () => Candle[];
+
+  constructor(
+    container: HTMLElement,
+    chart: IChartApi,
+    primitive: DrawingsPrimitive,
+    getBars: () => Candle[],
+  ) {
+    this.container = container;
+    this.chart = chart;
+    this.primitive = primitive;
+    this.getBars = getBars;
+
+    const on = <K extends keyof WindowEventMap>(
+      target: Window | HTMLElement,
+      type: K,
+      fn: (e: WindowEventMap[K]) => void,
+      capture = false,
+    ) => {
+      target.addEventListener(type, fn as EventListener, capture);
+      this.cleanup.push(() => target.removeEventListener(type, fn as EventListener, capture));
+    };
+    on(container, 'mousedown', (e) => this.onDown(e), true);
+    on(window, 'mousemove', (e) => this.onMove(e));
+    on(window, 'mouseup', (e) => this.onUp(e));
+    on(window, 'keydown', (e) => this.onKey(e));
+
+    let prevTool = useDrawingStore.getState().tool;
+    this.cleanup.push(
+      useDrawingStore.subscribe((s) => {
+        if (s.tool !== prevTool) {
+          prevTool = s.tool;
+          this.pending = null;
+          this.preview = null;
+        }
+        this.render();
+      }),
+    );
+    this.render();
+  }
+
+  dispose(): void {
+    for (const fn of this.cleanup.splice(0)) fn();
+  }
+
+  private render(): void {
+    const s = useDrawingStore.getState();
+    this.primitive.setDrawings(s.drawings, s.selectedId, this.preview);
+  }
+
+  /** Pane-relative point, or null outside the candle pane (price axis, sub-panes, time axis). */
+  private local(e: MouseEvent): Point | null {
+    const r = this.container.getBoundingClientRect();
+    const p = { x: e.clientX - r.left, y: e.clientY - r.top };
+    const width = this.chart.timeScale().width();
+    const height = this.chart.panes()[0]?.getHeight() ?? 0;
+    return p.x >= 0 && p.y >= 0 && p.x < width && p.y < height ? p : null;
+  }
+
+  private anchorAt(p: Point, snap: boolean): Anchor | null {
+    const raw = this.primitive.toAnchor(p.x, p.y);
+    if (!raw) return null;
+    return magnetSnap(raw, this.getBars(), snap && useDrawingStore.getState().magnet);
+  }
+
+  private onDown(e: MouseEvent): void {
+    if (e.button !== 0) return;
+    const p = this.local(e);
+    if (!p) return;
+    const store = useDrawingStore.getState();
+
+    if (store.tool) {
+      e.stopPropagation();
+      e.preventDefault();
+      if (store.loading) return;
+      const a = this.anchorAt(p, true);
+      if (!a) return;
+      if (this.pending) {
+        this.finish(a);
+      } else if (ANCHOR_COUNT[store.tool] === 1) {
+        store.add(makeDrawing(store.tool, a, a));
+      } else {
+        this.pending = { tool: store.tool, a, downAt: p };
+        this.preview = makeDrawing(store.tool, a, a, 'preview');
+        this.render();
+      }
+      return;
+    }
+
+    const hit = hitTestAll(this.primitive.shapes(), p.x, p.y, HIT_TOLERANCE);
+    if (!hit) {
+      if (store.selectedId) store.select(null);
+      return; // the chart pans as usual
+    }
+    e.stopPropagation();
+    e.preventDefault();
+    const orig = store.drawings.find((d) => d.id === hit.id);
+    const start = this.anchorAt(p, false);
+    store.select(hit.id);
+    if (orig && start) this.drag = { orig, part: hit.part, start };
+  }
+
+  private onMove(e: MouseEvent): void {
+    if (!this.pending && !this.drag) return;
+    const r = this.container.getBoundingClientRect();
+    const p = { x: e.clientX - r.left, y: e.clientY - r.top }; // may leave the pane mid-drag
+    if (this.pending) {
+      const b = this.anchorAt(p, true);
+      if (!b) return;
+      this.preview = makeDrawing(this.pending.tool, this.pending.a, b, 'preview');
+      this.render();
+      return;
+    }
+    const drag = this.drag!;
+    const cur = this.anchorAt(p, false);
+    const to = this.anchorAt(p, true);
+    if (!cur || !to) return;
+    const delta = { dTime: cur.time - drag.start.time, dPrice: cur.price - drag.start.price };
+    useDrawingStore.getState().update(moveDrawing(drag.orig, drag.part, delta, to));
+  }
+
+  private onUp(e: MouseEvent): void {
+    if (e.button !== 0) return;
+    this.drag = null;
+    if (!this.pending) return;
+    const r = this.container.getBoundingClientRect();
+    const p = { x: e.clientX - r.left, y: e.clientY - r.top };
+    const { downAt } = this.pending;
+    if (Math.hypot(p.x - downAt.x, p.y - downAt.y) <= DRAG_FINISH_PX) return; // click: wait for 2nd
+    const b = this.anchorAt(p, true);
+    if (b) this.finish(b);
+  }
+
+  private finish(b: Anchor): void {
+    const { tool, a } = this.pending!;
+    this.pending = null;
+    this.preview = null;
+    useDrawingStore.getState().add(makeDrawing(tool, a, b));
+  }
+
+  private onKey(e: KeyboardEvent): void {
+    if (isTyping(e.target)) return;
+    const store = useDrawingStore.getState();
+    if (e.altKey && !e.ctrlKey && !e.metaKey && TOOL_KEYS[e.code]) {
+      e.preventDefault();
+      store.setTool(TOOL_KEYS[e.code]);
+      return;
+    }
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (e.key === 'Escape') {
+      if (this.pending || store.tool) store.setTool(null);
+      else if (store.selectedId) store.select(null);
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && store.selectedId) {
+      e.preventDefault();
+      store.remove(store.selectedId);
+    }
+  }
+}
