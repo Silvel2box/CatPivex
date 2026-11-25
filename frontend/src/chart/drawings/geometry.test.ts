@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Candle } from '../../api/types';
 import {
+  alertLevel,
   constrainAngle,
   fibPrices,
   hitTestAll,
@@ -9,7 +10,13 @@ import {
   moveDrawing,
   sanitizeDrawings,
 } from './geometry';
-import { FIB_LEVELS, HIT_TOLERANCE, type Drawing, type PixelShape } from './types';
+import {
+  FIB_LEVELS,
+  HANDLE_TOLERANCE,
+  HIT_TOLERANCE,
+  type Drawing,
+  type PixelShape,
+} from './types';
 
 const TOL = HIT_TOLERANCE;
 
@@ -431,5 +438,57 @@ describe('T4.15 shift angle lock + fib extend', () => {
     };
     expect(sanitizeDrawings([{ ...f, extend: true }])[0]).toMatchObject({ extend: true });
     expect(sanitizeDrawings([{ ...f, extend: 'yes' }])[0]).not.toHaveProperty('extend');
+  });
+});
+
+describe('T6.1 horizontal ray', () => {
+  const shape: PixelShape = { type: 'hray', a: { x: 200, y: 100 } };
+  const ray: Drawing = {
+    id: 'r',
+    type: 'hray',
+    color: '#2962ff',
+    width: 1,
+    a: { time: 1000, price: 50 },
+  };
+
+  it('hits on the line right of the anchor, misses left of it, handle wins', () => {
+    const hit = (x: number, y: number) => hitTestShape(shape, x, y, TOL, HANDLE_TOLERANCE);
+    expect(hit(600, 103)).toBe('body');
+    expect(hit(600, 100 + TOL + 1)).toBeNull();
+    expect(hit(200 - HANDLE_TOLERANCE - 1, 100)).toBeNull();
+    expect(hit(50, 100)).toBeNull();
+    expect(hit(205, 100)).toBe('a');
+    expect(hit(193, 100)).toBe('a');
+    const body = (x: number, y: number) => hitTestShape(shape, x, y, TOL, 0);
+    expect(body(200 - TOL, 102)).toBe('body');
+    expect(body(200 - TOL - 1, 100)).toBeNull();
+  });
+
+  it('moving the body shifts the anchor, the handle puts it at `to`', () => {
+    const delta = { dTime: 300.4, dPrice: 5 };
+    const to = { time: 5000.6, price: 99 };
+    expect(moveDrawing(ray, 'body', delta, to)).toEqual({ ...ray, a: { time: 1300, price: 55 } });
+    expect(moveDrawing(ray, 'a', delta, to)).toEqual({ ...ray, a: { time: 5001, price: 99 } });
+    expect(ray.a).toEqual({ time: 1000, price: 50 });
+  });
+
+  it('carries an alert at its anchor price', () => {
+    expect(alertLevel(ray)).toBe(50);
+    expect(alertLevel({ ...ray, type: 'hline', price: 7 } as Drawing)).toBe(7);
+    expect(alertLevel({ ...ray, type: 'trendline', b: ray.a } as Drawing)).toBeNull();
+  });
+
+  it('sanitizeDrawings keeps a valid ray and drops invalid ones', () => {
+    expect(sanitizeDrawings([{ ...ray, a: { time: 1000.4, price: 50 }, b: 1 }])).toEqual([ray]);
+    const bad = [
+      { ...ray, a: undefined },
+      { ...ray, a: { time: 1, price: 'x' } },
+      { ...ray, a: { time: Infinity, price: 1 } },
+      { ...ray, a: { price: 1 } },
+      { ...ray, id: 'r2', a: [1000, 50] },
+      { id: 'r3', type: 'hray', color: '#2962ff', width: 1, price: 50 },
+      { ...ray, color: 'blue' },
+    ];
+    expect(sanitizeDrawings(bad)).toEqual([]);
   });
 });

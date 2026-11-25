@@ -60,7 +60,7 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
   private preview: Drawing | null = null;
   /** Where the next click would place a point (tool active, nothing clicked yet). */
   private ghost: { anchor: Anchor; color: string } | null = null;
-  /** hlines with an enabled price alert (bell mark). */
+  /** hlines / rays with an enabled price alert (bell mark). */
   private alertLines: ReadonlySet<string> = new Set();
   private projected: Projected[] = [];
   private readonly views: IPrimitivePaneView[];
@@ -219,6 +219,9 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
       if (d.type === 'hline') {
         const y = this.y(d.price);
         shape = y === null ? null : { type: 'hline', y };
+      } else if (d.type === 'hray') {
+        const a = this.point(d.a);
+        shape = a && { type: 'hray', a };
       } else if (d.type === 'vline') {
         const x = this.timeToX(d.time);
         shape = x === null ? null : { type: 'vline', x };
@@ -243,8 +246,8 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
   }
 
   /**
-   * Price-axis labels for every hline, plus price and time labels at the anchors of the drawing
-   * being drawn or the selected one, so you can place a point at an exact price/time.
+   * Price-axis labels for every hline and ray, plus price and time labels at the anchors of the
+   * drawing being drawn or the selected one, so you can place a point at an exact price/time.
    */
   private updateAxisLabels(): void {
     const price = (p: number) => this.series?.priceFormatter().format(p) ?? String(p);
@@ -257,11 +260,15 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
       if (shape.type === 'hline' && d.type === 'hline') {
         prices.push({ coord: shape.y, text: price(d.price), color: d.color });
       }
+      if (shape.type === 'hray' && d.type === 'hray') {
+        prices.push({ coord: shape.a.y, text: price(d.a.price), color: d.color });
+        if (d.id === active) times.push({ coord: shape.a.x, text: time(d.a.time), color: d.color });
+      }
       if (d.id !== active) continue;
       if (shape.type === 'vline' && d.type === 'vline') {
         times.push({ coord: shape.x, text: time(d.time), color: d.color });
       }
-      if ('a' in shape && 'a' in d) {
+      if ('b' in shape && 'b' in d) {
         for (const [p, anchor] of [
           [shape.a, d.a],
           [shape.b, d.b],
@@ -323,6 +330,9 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
               case 'vline':
                 line(ctx, shape.x, 0, shape.x, mediaSize.height);
                 break;
+              case 'hray':
+                line(ctx, shape.a.x, shape.a.y, mediaSize.width, shape.a.y);
+                break;
               case 'trendline':
                 line(ctx, shape.a.x, shape.a.y, shape.b.x, shape.b.y);
                 break;
@@ -368,11 +378,13 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
             }
             // Handles on the selected drawing and on the one under the mouse.
             const marked = d.id === selectedId || d.id === hoveredId;
-            if (marked && 'a' in shape) {
+            const handles =
+              'b' in shape ? [shape.a, shape.b] : shape.type === 'hray' ? [shape.a] : null;
+            if (marked && handles) {
               ctx.lineWidth = 2;
               ctx.strokeStyle = d.color;
               ctx.fillStyle = d.id === selectedId ? '#ffffff' : '#131722';
-              for (const p of [shape.a, shape.b]) {
+              for (const p of handles) {
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, HANDLE_RADIUS, 0, Math.PI * 2);
                 ctx.fill();
@@ -385,8 +397,10 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
               if (shape.type === 'hline') line(ctx, 0, shape.y, mediaSize.width, shape.y);
               if (shape.type === 'vline') line(ctx, shape.x, 0, shape.x, mediaSize.height);
             }
-            if (shape.type === 'hline' && alertLines.has(d.id)) {
-              bell(ctx, mediaSize.width - BELL_INSET, shape.y - 9, d.color);
+            const alertY =
+              shape.type === 'hline' ? shape.y : shape.type === 'hray' ? shape.a.y : null;
+            if (alertY !== null && alertLines.has(d.id)) {
+              bell(ctx, mediaSize.width - BELL_INSET, alertY - 9, d.color);
             }
             ctx.restore();
           }

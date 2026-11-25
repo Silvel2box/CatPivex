@@ -19,6 +19,7 @@ import {
 /** Alt+<key> picks a tool (event.code, so keyboard layout doesn't matter). */
 export const TOOL_KEYS: Record<string, DrawingType> = {
   KeyH: 'hline',
+  KeyJ: 'hray',
   KeyV: 'vline',
   KeyT: 'trendline',
   KeyR: 'rect',
@@ -37,6 +38,7 @@ const GHOST_COLOR = '#2962ff';
 export function makeDrawing(tool: DrawingType, a: Anchor, b: Anchor, id = newDrawingId()): Drawing {
   const base = { id, color: DEFAULT_COLOR[tool], width: 1 as const };
   if (tool === 'hline') return { ...base, type: 'hline', price: a.price };
+  if (tool === 'hray') return { ...base, type: 'hray', a };
   if (tool === 'vline') return { ...base, type: 'vline', time: a.time };
   return { ...base, type: tool, a, b };
 }
@@ -210,7 +212,7 @@ export class DrawingController {
     const drag = this.drag!;
     const o = drag.orig;
     const cur = this.anchorAt(p, false);
-    const other = 'a' in o ? (drag.part === 'a' ? o.b : o.a) : null;
+    const other = 'b' in o ? (drag.part === 'a' ? o.b : o.a) : null;
     const to =
       drag.part === 'body' || !other ? this.anchorAt(p, true) : this.endAnchor(e, p, o.type, other);
     if (!cur || !to) return;

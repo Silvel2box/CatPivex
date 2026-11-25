@@ -29,7 +29,7 @@ def _get(db: Database, alert_id: int) -> Alert:
 
 
 def sync_linked_alerts(db: Database, symbol: str, drawings: list[JsonObject]) -> None:
-    """Linked alerts follow their hline: moved -> new price, gone -> deleted."""
+    """Linked alerts follow their horizontal line or ray: moved -> new price, gone -> deleted."""
     lines = hline_prices(drawings)
     for alert in db.list_alerts(symbol, linked_only=True):
         if alert.drawing_id not in lines:
@@ -55,7 +55,8 @@ def create_alert(request: Request, body: AlertCreate) -> Alert:
         if price is None:
             raise ApiError(
                 "validation_error",
-                f"No horizontal line {body.drawing_id!r} with a valid price in {symbol} drawings",
+                f"No horizontal line or ray {body.drawing_id!r} with a valid price"
+                f" in {symbol} drawings",
             )
         body = body.model_copy(update={"price": price})
     now = int(request.app.state.clock())
@@ -78,7 +79,7 @@ def update_alert(request: Request, alert_id: int, body: AlertUpdate) -> Alert:
     fields = body.model_dump(exclude_none=True)
     if "price" in fields and alert.drawing_id is not None:
         raise ApiError(
-            "validation_error", "This alert follows a horizontal line: move the line instead"
+            "validation_error", "This alert follows a horizontal line or ray: move it instead"
         )
     rebase = fields.get("enabled") is True and not alert.enabled
     base = _baseline(request, alert.symbol) if rebase else None

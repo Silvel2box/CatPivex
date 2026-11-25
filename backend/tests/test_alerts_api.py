@@ -297,6 +297,41 @@ def test_t5_5_delete_drawings_deletes_linked_alerts(client):
     assert [a["id"] for a in client.get("/api/alerts").json()] == [solo["id"], eth["id"]]
 
 
+def ray(price, time=1_700_000_000, rid="r1"):
+    return {
+        "id": rid,
+        "type": "hray",
+        "color": "#2962ff",
+        "width": 1,
+        "a": {"time": time, "price": price},
+    }
+
+
+def test_t6_1_alert_linked_to_a_ray_follows_it_and_goes_with_it(client):
+    put_drawings(client, [ray(101.5), LINES[0]])
+    r = post(client, drawing_id="r1", price=999)
+    assert r.status_code == 201
+    assert (r.json()["price"], r.json()["drawing_id"]) == (101.5, "r1")
+    h1 = post(client, drawing_id="h1").json()
+
+    put_drawings(client, [ray(120.25, time=1_700_000_600), LINES[0]])
+    got = {a["drawing_id"]: a["price"] for a in client.get("/api/alerts").json()}
+    assert got == {"r1": 120.25, "h1": 101.5}
+
+    put_drawings(client, [{**ray(130), "a": "bad"}, LINES[0]])
+    assert {a["drawing_id"]: a["price"] for a in client.get("/api/alerts").json()}["r1"] == 120.25
+
+    put_drawings(client, [LINES[0]])
+    assert [a["id"] for a in client.get("/api/alerts").json()] == [h1["id"]]
+
+
+def test_t6_1_linked_create_rejects_a_malformed_ray(client):
+    put_drawings(client, [{**ray(0), "id": "r0"}, {**ray(1), "a": None}])
+    for rid in ("r0", "r1"):
+        assert_error(post(client, drawing_id=rid), 422, "validation_error")
+    assert client.get("/api/alerts").json() == []
+
+
 def test_t5_5_patch_price_of_linked_alert_is_rejected(client):
     put_drawings(client, LINES)
     a = post(client, drawing_id="h1").json()

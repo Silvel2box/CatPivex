@@ -67,9 +67,9 @@ function distToBox(x0: number, y0: number, x1: number, y1: number, x: number, y:
 
 /**
  * Hit-test one shape (T4.3). Anchor handles (a/b, within `tol` px of the point) win over the
- * body. Body: within `tol` px of an hline/vline, of the trendline segment, of a rect edge or
- * anywhere inside the rect, anywhere in the fib's filled area (x span × level-0..level-1, plus
- * `tol`) or within `tol` of the fib a–b diagonal.
+ * body. Body: within `tol` px of an hline/vline, of a ray right of its anchor, of the trendline
+ * segment, of a rect edge or anywhere inside the rect, anywhere in the fib's filled area (x span
+ * × level-0..level-1, plus `tol`) or within `tol` of the fib a–b diagonal.
  */
 export function hitTestShape(
   shape: PixelShape,
@@ -83,6 +83,9 @@ export function hitTestShape(
       return Math.abs(y - shape.y) <= tol ? 'body' : null;
     case 'vline':
       return Math.abs(x - shape.x) <= tol ? 'body' : null;
+    case 'hray':
+      if (dist(shape.a, x, y) <= handleTol) return 'a';
+      return Math.abs(y - shape.a.y) <= tol && x >= shape.a.x - tol ? 'body' : null;
   }
   const { a, b } = shape;
   if (dist(a, x, y) <= handleTol) return 'a';
@@ -158,6 +161,10 @@ export function moveDrawing(
       return { ...d, price: body ? d.price + delta.dPrice : to.price };
     case 'vline':
       return { ...d, time: Math.round(body ? d.time + delta.dTime : to.time) };
+    case 'hray':
+      return body
+        ? { ...d, a: { time: Math.round(d.a.time + delta.dTime), price: d.a.price + delta.dPrice } }
+        : { ...d, a: { time: Math.round(to.time), price: to.price } };
     default: {
       const shift = (p: Anchor): Anchor => ({
         time: Math.round(p.time + delta.dTime),
@@ -172,7 +179,8 @@ export function moveDrawing(
 
 /** Price an alert on this drawing follows; null = the drawing cannot carry an alert. */
 export function alertLevel(d: Drawing): number | null {
-  return d.type === 'hline' ? d.price : null;
+  if (d.type === 'hline') return d.price;
+  return d.type === 'hray' ? d.a.price : null;
 }
 
 // ---- Sanitize ----------------------------------------------------------------------------------
@@ -206,6 +214,10 @@ function drawingOf(v: unknown): Drawing | null {
       return finite(v.price) ? { ...base, type, price: v.price } : null;
     case 'vline':
       return finite(v.time) ? { ...base, type, time: Math.round(v.time) } : null;
+    case 'hray': {
+      const a = anchorOf(v.a);
+      return a ? { ...base, type, a } : null;
+    }
     case 'trendline':
     case 'rect': {
       const a = anchorOf(v.a);

@@ -107,12 +107,14 @@ def format_message(
 
 
 def hline_prices(drawings: list[dict[str, Any]]) -> dict[str, float | None]:
-    """id -> price of every 'hline' drawing (None when its price is not a positive number)."""
+    """id -> price of every 'hline' / 'hray' (None when it is not a positive number)."""
     out: dict[str, float | None] = {}
     for d in drawings:
-        if d.get("type") != "hline" or not isinstance(d.get("id"), str):
+        kind = d.get("type")
+        if kind not in ("hline", "hray") or not isinstance(d.get("id"), str):
             continue
-        p = d.get("price")
+        a = d.get("a")
+        p = d.get("price") if kind == "hline" else a.get("price") if isinstance(a, dict) else None
         ok = isinstance(p, int | float) and not isinstance(p, bool) and math.isfinite(p) and p > 0
         out[d["id"]] = float(p) if ok else None
     return out

@@ -39,7 +39,8 @@ Price alerts (rules: project task list, Phase 5):
   GET /api/alerts -> list[Alert] · POST /api/alerts AlertCreate -> Alert 201
   PATCH /api/alerts/{id} AlertUpdate -> Alert · DELETE /api/alerts/{id} -> 204 (404 not_found)
   GET /api/alerts/events?after=<event id>&limit=50 (1..500) -> list[AlertEvent], newest first
-  drawing_id = an 'hline' of the symbol: price follows it, deleted with it; PATCH price -> 422.
+  drawing_id = an 'hline' or 'hray' of the symbol: price follows it, deleted with it;
+  PATCH price -> 422.
 
 Test feed (CATPIVEX_TEST_FEED=1 only): exchange TEST (1m, in memory) +
   PUT /api/test/price {"symbol": "TEST:FOO", "price": 100.0} -> 204 (moves the current 1m bar).
@@ -171,7 +172,7 @@ class Alert(BaseModel):
     price: float  # the level; for a linked alert, kept equal to its line's price
     repeat: bool  # False = disable after the first trigger
     enabled: bool
-    drawing_id: str | None  # the 'hline' this alert follows, None = standalone
+    drawing_id: str | None  # the 'hline' / 'hray' this alert follows, None = standalone
     note: str
     created_at: int  # unix s
     last_triggered_at: int | None
