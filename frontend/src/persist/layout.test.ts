@@ -34,6 +34,8 @@ const valid: Layout = {
   indicators: [sma, macd, vwap] as Layout['indicators'],
   volumeVisible: false,
   magnet: false,
+  stayInTool: true,
+  drawingBar: { x: 120, y: 40 },
 };
 
 describe('T4.8 sanitizeLayout', () => {
@@ -72,6 +74,41 @@ describe('T4.8 sanitizeLayout', () => {
       magnet: DEFAULT_LAYOUT.magnet,
       indicators: [],
     });
+  });
+
+  it('T6 stayInTool and drawingBar: kept when valid, default when missing or invalid', () => {
+    const older: Partial<Layout> = { ...valid };
+    delete older.stayInTool;
+    delete older.drawingBar;
+    expect(sanitizeLayout(older)).toEqual({ ...valid, stayInTool: false, drawingBar: null });
+    expect(sanitizeLayout({ ...valid, drawingBar: null })).toEqual({ ...valid, drawingBar: null });
+    expect(sanitizeLayout({ ...valid, drawingBar: { x: 0, y: 0 } }).drawingBar).toEqual({
+      x: 0,
+      y: 0,
+    });
+    for (const stayInTool of [1, 'true', null, {}]) {
+      expect(sanitizeLayout({ ...valid, stayInTool }).stayInTool).toBe(false);
+    }
+    for (const drawingBar of [
+      'top',
+      7,
+      [10, 20],
+      {},
+      { x: 10 },
+      { x: '10', y: 20 },
+      { x: 10, y: NaN },
+      { x: Infinity, y: 20 },
+      { x: -1, y: 20 },
+      { x: 10, y: -0.5 },
+    ]) {
+      expect(sanitizeLayout({ ...valid, drawingBar }).drawingBar).toBeNull();
+    }
+  });
+
+  it('T6 drawingBar strips extra keys and round-trips through JSON', () => {
+    const out = sanitizeLayout({ ...valid, drawingBar: { x: 5.5, y: 9, junk: 1 } });
+    expect(out.drawingBar).toEqual({ x: 5.5, y: 9 });
+    expect(sanitizeLayout(JSON.parse(JSON.stringify(out)))).toEqual(out);
   });
 
   it('accepts the symbol charset of the regex', () => {

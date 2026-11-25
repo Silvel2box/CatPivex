@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChartView } from './chart/ChartView';
 import { AlertToasts } from './components/AlertToasts';
+import { DrawingBar } from './components/DrawingBar';
 import { DrawingContextMenu } from './components/DrawingContextMenu';
 import { DrawingToolbar } from './components/DrawingToolbar';
 import { TopBar } from './components/TopBar';
@@ -13,6 +14,7 @@ export function App() {
   // The saved layout (symbol, timeframe, indicators) is applied before the chart mounts, so the
   // first candle request is already for the right symbol.
   const [ready, setReady] = useState(false);
+  const chartAreaRef = useRef<HTMLElement>(null);
   useEffect(() => {
     const abort = new AbortController();
     void restoreLayout(abort.signal).finally(() => {
@@ -31,7 +33,10 @@ export function App() {
       <TopBar />
       <div className="flex min-h-0 flex-1">
         <DrawingToolbar />
-        <main className="min-w-0 flex-1">{ready && <ChartView />}</main>
+        <main ref={chartAreaRef} className="relative min-w-0 flex-1">
+          {ready && <ChartView />}
+          <DrawingBar areaRef={chartAreaRef} />
+        </main>
         <Watchlist />
       </div>
       <DrawingContextMenu />

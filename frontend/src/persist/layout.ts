@@ -16,6 +16,9 @@ export interface Layout {
   indicators: IndicatorInstance[];
   volumeVisible: boolean;
   magnet: boolean;
+  stayInTool: boolean;
+  /** Floating drawing bar, px from the chart's top-left; null = default (top centre). */
+  drawingBar: { x: number; y: number } | null;
 }
 
 export const DEFAULT_LAYOUT: Layout = {
@@ -25,6 +28,8 @@ export const DEFAULT_LAYOUT: Layout = {
   indicators: [],
   volumeVisible: true,
   magnet: false, // weak magnet, off by default like TradingView
+  stayInTool: false,
+  drawingBar: null,
 };
 
 const SYMBOL_RE = /^[A-Z]+:[A-Z0-9.=^-]+$/;
@@ -32,6 +37,12 @@ const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+const coord = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+
+function drawingBarOf(v: unknown): Layout['drawingBar'] {
+  return isRecord(v) && coord(v.x) && coord(v.y) ? { x: v.x, y: v.y } : null;
 }
 
 /** One indicator, or null to drop it. Output holds only the def's keys (extra keys stripped). */
@@ -95,5 +106,7 @@ export function sanitizeLayout(raw: unknown): Layout {
     indicators,
     volumeVisible: typeof r.volumeVisible === 'boolean' ? r.volumeVisible : d.volumeVisible,
     magnet: typeof r.magnet === 'boolean' ? r.magnet : d.magnet,
+    stayInTool: typeof r.stayInTool === 'boolean' ? r.stayInTool : d.stayInTool,
+    drawingBar: drawingBarOf(r.drawingBar),
   };
 }

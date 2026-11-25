@@ -16,6 +16,8 @@ interface DrawingState {
   magnet: boolean;
   /** Ruler armed from the toolbar (one-shot; not a drawing). */
   measuring: boolean;
+  stayInTool: boolean;
+  drawingBar: { x: number; y: number } | null;
   /** Bumped by user edits only (not by loading), so persistence saves exactly those. */
   rev: number;
   /** Undo / redo snapshots of `drawings` for the current symbol (cleared on symbol switch). */
@@ -30,7 +32,7 @@ interface DrawingState {
   load: (symbol: string, drawings: Drawing[]) => void;
   setTool: (tool: DrawingType | null) => void;
   select: (id: string | null) => void;
-  /** Adds and selects (one undo step). */
+  /** Adds and selects, or with `stayInTool` keeps the tool and selects nothing (one undo step). */
   add: (d: Drawing) => void;
   /**
    * Replaces the drawing with the same id WITHOUT an undo step: a drag calls `checkpoint()` once
@@ -54,6 +56,8 @@ interface DrawingState {
   setMagnet: (on: boolean) => void;
   /** Arming the ruler drops the active tool; `setTool` disarms it. */
   setMeasuring: (on: boolean) => void;
+  setStayInTool: (on: boolean) => void;
+  setDrawingBar: (pos: { x: number; y: number } | null) => void;
 }
 
 export const newDrawingId = () => `d-${Math.random().toString(36).slice(2, 10)}`;
@@ -76,6 +80,8 @@ export const useDrawingStore = create<DrawingState>()((set) => ({
   tool: null,
   magnet: false,
   measuring: false,
+  stayInTool: false,
+  drawingBar: null,
   rev: 0,
   past: [],
   future: [],
@@ -105,8 +111,8 @@ export const useDrawingStore = create<DrawingState>()((set) => ({
     set((s) => ({
       ...step(s),
       drawings: [...s.drawings, d],
-      selectedId: d.id,
-      tool: null,
+      selectedId: s.stayInTool ? null : d.id,
+      tool: s.stayInTool ? s.tool : null,
       rev: s.rev + 1,
     })),
   update: (d) =>
@@ -173,4 +179,6 @@ export const useDrawingStore = create<DrawingState>()((set) => ({
   setMagnet: (magnet) => set({ magnet }),
   setMeasuring: (measuring) =>
     set(measuring ? { measuring, tool: null, selectedId: null, menu: null } : { measuring }),
+  setStayInTool: (stayInTool) => set({ stayInTool }),
+  setDrawingBar: (drawingBar) => set({ drawingBar }),
 }));
