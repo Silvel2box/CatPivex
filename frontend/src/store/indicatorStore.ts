@@ -34,8 +34,9 @@ interface IndicatorState {
   restore: (instances: IndicatorInstance[], volumeVisible: boolean) => void;
 }
 
-/** A value is valid when finite, within [min, max] and on the step grid from min. */
+/** A value is valid when finite, within [min, max] and on the step grid from min; with `options`, one of their values. */
 export function isValidParam(field: IndicatorDef['params'][number], value: number): boolean {
+  if (field.options) return field.options.some((o) => o.value === value);
   if (!Number.isFinite(value) || value < field.min || value > field.max) return false;
   const steps = (value - field.min) / field.step;
   return Math.abs(steps - Math.round(steps)) < 1e-6;

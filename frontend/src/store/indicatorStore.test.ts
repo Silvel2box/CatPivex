@@ -88,6 +88,18 @@ describe('T3.6 indicator store', () => {
     expect(isValidParam(f, 0.05)).toBe(false);
     expect(isValidParam(f, 2.25)).toBe(false);
   });
+
+  it('T7 select params accept only listed option values', () => {
+    const kind = INDICATORS.pivot.params.find((f) => f.key === 'kind')!;
+    expect([0, 1, 2].map((v) => isValidParam(kind, v))).toEqual([true, true, true]);
+    for (const v of [3, -1, 0.5, NaN, Infinity]) expect(isValidParam(kind, v)).toBe(false);
+    const id = store().add('pivot');
+    expect(store().instances[0].params).toEqual({ kind: 0, timeframe: 0 });
+    expect(store().updateParams(id, { kind: 2, timeframe: 3 })).toBe(true);
+    expect(store().updateParams(id, { timeframe: 4 })).toBe(false);
+    expect(store().updateParams(id, { kind: 1.5 })).toBe(false);
+    expect(store().instances[0].params).toEqual({ kind: 2, timeframe: 3 });
+  });
 });
 
 describe('restore', () => {

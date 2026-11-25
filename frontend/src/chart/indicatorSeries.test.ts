@@ -1,10 +1,11 @@
 import type { IChartApi } from 'lightweight-charts';
 import { describe, expect, it, vi } from 'vitest';
-import type { Candle } from '../api/types';
+import type { fetchCandles } from '../api/client';
+import type { Candle, CandlesResponse } from '../api/types';
 import type { IndicatorInstance } from '../store/indicatorStore';
 import { HIST_DOWN } from './indicatorData';
 import { IndicatorLayer } from './indicatorSeries';
-import type { IndicatorRun, LinePoint, Params } from './indicators/types';
+import type { CalcContext, IndicatorRun, LinePoint, Params } from './indicators/types';
 
 /** Minimal stand-in for the chart: panes of series, empty panes (except 0) disappear. */
 function fakeChart() {
@@ -205,6 +206,139 @@ describe('T3.7 IndicatorLayer (fake chart + fake runner)', () => {
     layer.setSource('BINANCE:BTCUSDT', '1D', BARS);
     expect(layer.debug().map((d) => d.type)).toEqual(['rsi']);
     expect(panes.map((p) => p.length)).toEqual([0, 1]);
+    err.mockRestore();
+  });
+});
+
+function fakeDaily() {
+  const reqs: {
+    query: { symbol: string; interval: string; limit?: number };
+    signal: AbortSignal;
+    resolve(candles: Candle[]): void;
+    reject(err: unknown): void;
+  }[] = [];
+  const fetch = vi.fn(
+    (query: { symbol: string; interval: string; limit?: number }, signal?: AbortSignal) =>
+      new Promise<CandlesResponse>((resolve, reject) =>
+        reqs.push({
+          query,
+          signal: signal!,
+          resolve: (candles) =>
+            resolve({
+              symbol: query.symbol,
+              interval: '1D',
+              candles,
+              delayed: false,
+              warning: null,
+            }),
+          reject,
+        }),
+      ),
+  );
+  return { fetch: fetch as unknown as typeof fetchCandles, reqs };
+}
+
+const flush = () => new Promise((r) => setTimeout(r, 0));
+const ctxOf = (run: ReturnType<typeof fakeRunner>['run'], i: number) =>
+  run.mock.calls[i][2] as CalcContext;
+const DAY0 = Date.UTC(2026, 10, 24) / 1000;
+const DAILY = [bar(DAY0 - 86400, 1, 2), bar(DAY0, 2, 3)];
+const pivot = inst('p', 'pivot', { kind: 0, timeframe: 0 });
+
+describe('T7.3 IndicatorLayer daily candles for pivots', () => {
+  it('fetches 1D once for the symbol and reruns only pivots when it arrives', async () => {
+    const { chart, panes } = fakeChart();
+    const { run } = fakeRunner();
+    const { fetch, reqs } = fakeDaily();
+    const layer = new IndicatorLayer(chart, run, fetch);
+    const now = Math.floor(Date.now() / 1000);
+    const recent = [bar(now - 120, 1, 2), bar(now - 60, 2, 3)];
+    layer.setSource('BINANCE:BTCUSDT', '1m', recent);
+    layer.setInstances([inst('s', 'sma', { period: 20 })]);
+    expect(reqs).toHaveLength(0);
+    layer.setInstances([inst('s', 'sma', { period: 20 }), pivot]);
+    layer.setSource('BINANCE:BTCUSDT', '1m', recent);
+    expect(reqs.map((r) => r.query)).toEqual([
+      { symbol: 'BINANCE:BTCUSDT', interval: '1D', limit: 100 },
+    ]);
+    expect(run).toHaveBeenCalledTimes(4);
+    expect(ctxOf(run, 1)).toMatchObject({ interval: '1m', daily: null });
+    expect(panes[0][1].opts).toMatchObject({ lastValueVisible: false, priceLineVisible: false });
+
+    reqs[0].resolve(DAILY);
+    await flush();
+    expect(run).toHaveBeenCalledTimes(5);
+    expect(run.mock.calls[4][1]).toEqual(pivot.params);
+    expect(ctxOf(run, 4)).toMatchObject({ interval: '1m', daily: DAILY });
+    expect(ctxOf(run, 4).dayKey(DAY0)).toBe('2026-11-24');
+
+    layer.setSource('BINANCE:BTCUSDT', '5m', recent); // cached per symbol
+    expect(reqs).toHaveLength(1);
+    expect(ctxOf(run, run.mock.calls.length - 1).daily).toBe(DAILY);
+  });
+
+  it('long history asks for more days (capped at 1000); a symbol switch aborts the old request', async () => {
+    const { chart } = fakeChart();
+    const { run } = fakeRunner();
+    const { fetch, reqs } = fakeDaily();
+    const layer = new IndicatorLayer(chart, run, fetch);
+    layer.setInstances([pivot]);
+    layer.setSource('BINANCE:BTCUSDT', '1h', BARS); // 1970: capped
+    layer.setSource('BINANCE:ETHUSDT', '1h', BARS);
+    expect(reqs.map((r) => [r.query.symbol, r.query.limit, r.signal.aborted])).toEqual([
+      ['BINANCE:BTCUSDT', 1000, true],
+      ['BINANCE:ETHUSDT', 1000, false],
+    ]);
+    const calls = run.mock.calls.length;
+    reqs[0].resolve(DAILY);
+    await flush();
+    expect(run).toHaveBeenCalledTimes(calls);
+    reqs[1].resolve(DAILY);
+    await flush();
+    expect(run).toHaveBeenCalledTimes(calls + 1);
+    expect(ctxOf(run, calls).daily).toBe(DAILY);
+  });
+
+  it('1D: the chart bars are the daily data (no fetch); a bar of a new day reruns pivots', () => {
+    const { chart } = fakeChart();
+    const { run } = fakeRunner();
+    const { fetch, reqs } = fakeDaily();
+    const layer = new IndicatorLayer(chart, run, fetch);
+    const bars = [...DAILY];
+    layer.setSource('BINANCE:BTCUSDT', '1D', bars);
+    layer.setInstances([pivot, inst('s', 'sma', { period: 20 })]);
+    expect(ctxOf(run, 0)).toMatchObject({ interval: '1D', daily: bars });
+    layer.update(bar(DAY0, 2, 4)); // same day
+    expect(run).toHaveBeenCalledTimes(2);
+    bars.push(bar(DAY0 + 86400, 4, 5));
+    layer.update(bars[2]);
+    expect(run).toHaveBeenCalledTimes(3);
+    expect(run.mock.calls[2][1]).toEqual(pivot.params);
+    expect(reqs).toHaveLength(0);
+  });
+
+  it('a realtime bar of a new day refetches; a failed fetch logs once and leaves pivots empty', async () => {
+    const { chart, panes } = fakeChart();
+    const { run } = fakeRunner();
+    const { fetch, reqs } = fakeDaily();
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const layer = new IndicatorLayer(chart, run, fetch);
+    layer.setSource('BINANCE:BTCUSDT', '1m', [bar(DAY0 + 60, 1, 2)]);
+    layer.setInstances([pivot]);
+    reqs[0].resolve(DAILY);
+    await flush();
+    layer.update(bar(DAY0 + 120, 2, 3));
+    expect(reqs).toHaveLength(1);
+    layer.update(bar(DAY0 + 86400, 3, 4));
+    expect(reqs).toHaveLength(2);
+    reqs[1].reject(new Error('offline'));
+    await flush();
+    expect(ctxOf(run, run.mock.calls.length - 1).daily).toBeNull();
+    layer.update(bar(DAY0 + 2 * 86400, 3, 4));
+    reqs[2].reject(new Error('offline'));
+    await flush();
+    expect(err).toHaveBeenCalledTimes(1);
+    expect(panes[0]).toHaveLength(9);
     err.mockRestore();
   });
 });

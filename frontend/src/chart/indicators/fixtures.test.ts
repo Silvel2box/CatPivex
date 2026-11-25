@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { candlesOf, FIXTURES } from './fixtures/load';
+import { candlesOf, contextOf, FIXTURES } from './fixtures/load';
 import { dayKeyFor, INDICATORS, runIndicator } from './index';
 
 describe('T3.1 indicators vs TA-Lib / pandas fixtures', () => {
@@ -11,7 +11,7 @@ describe('T3.1 indicators vs TA-Lib / pandas fixtures', () => {
     const bars = candlesOf(f);
     for (const c of f.cases) {
       it(`${f.name} ${c.type} ${JSON.stringify(c.params)} (${c.library})`, () => {
-        const run = runIndicator(INDICATORS[c.type].calc, c.params, dayKeyFor(f.symbol), bars);
+        const run = runIndicator(INDICATORS[c.type].calc, c.params, contextOf(f), bars);
         expect(Object.keys(run.lines).sort()).toEqual(Object.keys(c.lines).sort());
         for (const [key, exp] of Object.entries(c.lines)) {
           const got = run.lines[key];
