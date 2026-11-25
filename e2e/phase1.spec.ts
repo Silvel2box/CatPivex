@@ -100,3 +100,43 @@ test('TX.4 Lightweight Charts attribution: no logo on the chart, credit link on 
   await expect(link).toBeVisible();
   await expect(link).toHaveText('TradingView Lightweight Charts™');
 });
+
+test('T1.12 crosshair horizontal line sits at the cursor, not snapped to the close', async ({
+  page,
+}) => {
+  const box = (await page.getByTestId('chart').boundingBox())!;
+  // Near the top of the main pane: above every candle (10% top margin), so a magnet crosshair
+  // would draw its horizontal line far below this row, at the hovered bar's close.
+  const x = box.x + box.width * 0.6;
+  const y = box.y + 15;
+  await page.mouse.move(x, y);
+  await page.waitForTimeout(200);
+  // Opaque pixels on the cursor's row (±1px), left of the cursor, in the top canvas layer of
+  // the pane under the cursor (LWC draws the crosshair there; it is transparent otherwise).
+  const opaque = await page.evaluate(
+    ([cx, cy]) => {
+      const hit = [...document.querySelectorAll<HTMLCanvasElement>('[data-testid="chart"] canvas')]
+        .filter((c) => {
+          const r = c.getBoundingClientRect();
+          return cx >= r.left && cx < r.right && cy >= r.top && cy < r.bottom;
+        })
+        .at(-1)!;
+      const r = hit.getBoundingClientRect();
+      const sx = hit.width / r.width;
+      const sy = hit.height / r.height;
+      const px = hit
+        .getContext('2d')!
+        .getImageData(
+          Math.round(5 * sx),
+          Math.round((cy - r.top - 1) * sy),
+          Math.round((cx - r.left - 35) * sx),
+          Math.max(1, Math.round(3 * sy)),
+        ).data;
+      let n = 0;
+      for (let i = 3; i < px.length; i += 4) if (px[i] > 0) n++;
+      return n;
+    },
+    [x, y],
+  );
+  expect(opaque).toBeGreaterThan(50);
+});

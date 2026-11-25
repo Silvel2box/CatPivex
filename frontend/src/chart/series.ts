@@ -1,6 +1,7 @@
 import {
   CandlestickSeries,
   ColorType,
+  CrosshairMode,
   HistogramSeries,
   TickMarkType,
   createChart,
@@ -95,6 +96,8 @@ export function createMainChart(container: HTMLElement): ChartHandles {
       vertLines: { color: '#1e222d' },
       horzLines: { color: '#1e222d' },
     },
+    // Default is Magnet (horizontal line sticks to the close); follow the cursor like TradingView.
+    crosshair: { mode: CrosshairMode.Normal },
     rightPriceScale: { borderColor: '#2a2e39' },
     timeScale: {
       borderColor: '#2a2e39',
