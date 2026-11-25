@@ -147,6 +147,21 @@ def macd_crosscheck(c, fast, slow, signal) -> dict:
     return res
 
 
+def stoch_talib(h, lo, c, k_length, k_smooth, d_smooth):
+    raw, _ = talib.STOCHF(h, lo, c, fastk_period=k_length, fastd_period=1, fastd_matype=0)
+    k = talib.SMA(raw, timeperiod=k_smooth)
+    return {"k": k, "d": talib.SMA(k, timeperiod=d_smooth)}
+
+
+def stochrsi_pandas(c, rsi_length, stoch_length, k_smooth, d_smooth):
+    r = pd.Series(talib.RSI(c, timeperiod=rsi_length))
+    mn = r.rolling(stoch_length).min()
+    mx = r.rolling(stoch_length).max()
+    raw = (100 * (r - mn) / (mx - mn)).where(mx != mn, 0).where(mx.notna())
+    k = raw.rolling(k_smooth).mean()
+    return {"k": k.to_numpy(), "d": k.rolling(d_smooth).mean().to_numpy()}
+
+
 def line(arr) -> dict:
     arr = np.asarray(arr, dtype=float)
     idx = np.where(~np.isnan(arr))[0]
@@ -178,6 +193,17 @@ def cases(df: pd.DataFrame, tz: str) -> list[dict]:
     for f, s, g in ((12, 26, 9), (5, 35, 5)):
         add("macd", {"fast": f, "slow": s, "signal": g}, "talib.EMA (MACD built per FORMULAS.md)", ema_macd(c, f, s, g))
     add("vwap", {}, f"pandas groupby(date in {tz}).cumsum", vwap_pandas(df, tz))
+
+    # ---- P7.A: stoch / stochrsi ----
+    h = df["high"].to_numpy(dtype=float)
+    lo = df["low"].to_numpy(dtype=float)
+    for kl, ks, ds in ((14, 3, 3), (5, 2, 4)):
+        add("stoch", {"kLength": kl, "kSmooth": ks, "dSmooth": ds},
+            "talib.STOCHF(fastd=1) + talib.SMA x2", stoch_talib(h, lo, c, kl, ks, ds))
+    for rl, sl, ks, ds in ((14, 14, 3, 3), (7, 21, 5, 2)):
+        assert np.any(np.diff(c[: rl + 1]) > 0) and np.any(np.diff(c[: rl + 1]) < 0), "flat RSI seed"
+        add("stochrsi", {"rsiLength": rl, "stochLength": sl, "kSmooth": ks, "dSmooth": ds},
+            "talib.RSI + pandas rolling min/max/mean", stochrsi_pandas(c, rl, sl, ks, ds))
     return out
 
 
