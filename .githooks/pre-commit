@@ -1,0 +1,8 @@
+#!/bin/sh
+for py in backend/.venv/Scripts/python backend/.venv/bin/python python3 python; do
+  if command -v "$py" >/dev/null 2>&1 || [ -x "$py" ]; then
+    exec "$py" scripts/check_secrets.py
+  fi
+done
+echo "pre-commit: no Python found to run scripts/check_secrets.py" >&2
+exit 1
