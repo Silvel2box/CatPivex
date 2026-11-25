@@ -14,6 +14,8 @@ interface DrawingState {
   /** Active drawing tool; null = cursor (select / drag). */
   tool: DrawingType | null;
   magnet: boolean;
+  stayInTool: boolean;
+  drawingBar: { x: number; y: number } | null;
   /** Bumped by user edits only (not by loading), so persistence saves exactly those. */
   rev: number;
   /** Undo / redo snapshots of `drawings` for the current symbol (cleared on symbol switch). */
@@ -28,7 +30,7 @@ interface DrawingState {
   load: (symbol: string, drawings: Drawing[]) => void;
   setTool: (tool: DrawingType | null) => void;
   select: (id: string | null) => void;
-  /** Adds and selects (one undo step). */
+  /** Adds and selects, or with `stayInTool` keeps the tool and selects nothing (one undo step). */
   add: (d: Drawing) => void;
   /**
    * Replaces the drawing with the same id WITHOUT an undo step: a drag calls `checkpoint()` once
@@ -50,6 +52,8 @@ interface DrawingState {
   openMenu: (id: string, x: number, y: number) => void;
   closeMenu: () => void;
   setMagnet: (on: boolean) => void;
+  setStayInTool: (on: boolean) => void;
+  setDrawingBar: (pos: { x: number; y: number } | null) => void;
 }
 
 export const newDrawingId = () => `d-${Math.random().toString(36).slice(2, 10)}`;
@@ -71,6 +75,8 @@ export const useDrawingStore = create<DrawingState>()((set) => ({
   selectedId: null,
   tool: null,
   magnet: false,
+  stayInTool: false,
+  drawingBar: null,
   rev: 0,
   past: [],
   future: [],
@@ -99,8 +105,8 @@ export const useDrawingStore = create<DrawingState>()((set) => ({
     set((s) => ({
       ...step(s),
       drawings: [...s.drawings, d],
-      selectedId: d.id,
-      tool: null,
+      selectedId: s.stayInTool ? null : d.id,
+      tool: s.stayInTool ? s.tool : null,
       rev: s.rev + 1,
     })),
   update: (d) =>
@@ -165,4 +171,6 @@ export const useDrawingStore = create<DrawingState>()((set) => ({
   openMenu: (id, x, y) => set({ menu: { id, x, y }, selectedId: id }),
   closeMenu: () => set({ menu: null }),
   setMagnet: (magnet) => set({ magnet }),
+  setStayInTool: (stayInTool) => set({ stayInTool }),
+  setDrawingBar: (drawingBar) => set({ drawingBar }),
 }));

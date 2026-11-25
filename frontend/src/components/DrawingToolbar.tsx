@@ -1,14 +1,9 @@
 import type { ReactNode } from 'react';
-import {
-  FIB_FILL_ALPHA,
-  FIB_FILL_OPTIONS,
-  type DrawingType,
-  type DrawingWidth,
-} from '../chart/drawings/types';
+import type { DrawingType } from '../chart/drawings/types';
 import { useDrawingStore } from '../store/drawingStore';
 
 const ICON = 'h-5 w-5';
-const svg = (children: ReactNode) => (
+export const svg = (children: ReactNode) => (
   <svg
     viewBox="0 0 24 24"
     className={ICON}
@@ -71,21 +66,19 @@ const TOOLS: { type: DrawingType; label: string; key: string; icon: ReactNode }[
   },
 ];
 
-const WIDTHS: DrawingWidth[] = [1, 2, 3, 4];
-
-const btn = (active: boolean) =>
+export const btn = (active: boolean) =>
   `flex h-8 w-8 items-center justify-center rounded ${
     active
       ? 'bg-[#2962ff]/25 text-[#5b8cff]'
       : 'text-[#b2b5be] hover:bg-[#2a2e39] hover:text-[#d1d4dc]'
   }`;
 
-/** Left toolbar: drawing tools, magnet, and style/delete for the selected drawing. */
+/** Left toolbar: drawing tools, magnet and stay-in-drawing-mode. */
 export function DrawingToolbar() {
   const tool = useDrawingStore((s) => s.tool);
   const magnet = useDrawingStore((s) => s.magnet);
-  const selected = useDrawingStore((s) => s.drawings.find((d) => d.id === s.selectedId) ?? null);
-  const { setTool, setMagnet, setStyle, remove, reverse } = useDrawingStore.getState();
+  const stayInTool = useDrawingStore((s) => s.stayInTool);
+  const { setTool, setMagnet, setStayInTool } = useDrawingStore.getState();
 
   return (
     <nav
@@ -126,86 +119,23 @@ export function DrawingToolbar() {
       >
         {svg(<path d="M7 4v7a5 5 0 0 0 10 0V4M7 4h3v7a2 2 0 0 0 4 0V4h3M7 8h3M14 8h3" />)}
       </button>
-
-      {selected && (
-        <div
-          data-testid="drawing-style"
-          className="mt-2 flex flex-col items-center gap-1.5 border-t border-[#2a2e39] pt-2"
-        >
-          <input
-            type="color"
-            data-testid="drawing-color"
-            title="Line colour"
-            value={selected.color}
-            onChange={(e) => setStyle(selected.id, { color: e.target.value })}
-            className="h-6 w-7 cursor-pointer rounded border border-[#2a2e39] bg-transparent p-0"
-          />
-          <select
-            data-testid="drawing-width"
-            title="Line width (px)"
-            aria-label="Line width (px)"
-            value={selected.width}
-            onChange={(e) =>
-              setStyle(selected.id, { width: Number(e.target.value) as DrawingWidth })
-            }
-            className="w-9 rounded border border-[#2a2e39] bg-[#131722] py-0.5 text-center text-[11px] text-[#d1d4dc] outline-none"
-          >
-            {WIDTHS.map((w) => (
-              <option key={w} value={w}>
-                {w}
-              </option>
-            ))}
-          </select>
-          {selected.type === 'fib' && (
-            <select
-              data-testid="drawing-fill"
-              title="Background opacity (0% = no fill)"
-              aria-label="Background opacity"
-              value={selected.fill ?? FIB_FILL_ALPHA}
-              onChange={(e) => setStyle(selected.id, { fill: Number(e.target.value) })}
-              className="w-10 rounded border border-[#2a2e39] bg-[#131722] py-0.5 text-center text-[11px] text-[#d1d4dc] outline-none"
-            >
-              {FIB_FILL_OPTIONS.map((v) => (
-                <option key={v} value={v}>
-                  {Math.round(v * 100)}%
-                </option>
-              ))}
-            </select>
-          )}
-          {selected.type === 'fib' && (
-            <>
-              <button
-                type="button"
-                data-testid="drawing-reverse"
-                title="Reverse: swap levels 0 and 1"
-                onClick={() => reverse(selected.id)}
-                className={btn(false)}
-              >
-                {svg(<path d="M8 4v16M8 4 5 7M8 4l3 3M16 20V4M16 20l-3-3M16 20l3-3" />)}
-              </button>
-              <button
-                type="button"
-                data-testid="drawing-extend"
-                title="Extend lines to the right"
-                aria-pressed={selected.extend === true}
-                onClick={() => setStyle(selected.id, { extend: !selected.extend })}
-                className={btn(selected.extend === true)}
-              >
-                {svg(<path d="M4 8h10M4 12h16M4 16h10M17 9l3 3-3 3" />)}
-              </button>
-            </>
-          )}
-          <button
-            type="button"
-            data-testid="drawing-delete"
-            title="Delete drawing (Delete)"
-            onClick={() => remove(selected.id)}
-            className="flex h-8 w-8 items-center justify-center rounded text-[#b2b5be] hover:bg-[#2a2e39] hover:text-[#ef5350]"
-          >
-            {svg(<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10.5 10.5v5.5M13.5 10.5v5.5" />)}
-          </button>
-        </div>
-      )}
+      <button
+        type="button"
+        data-testid="draw-stay-toggle"
+        title={`Stay in drawing mode (${stayInTool ? 'on' : 'off'})`}
+        aria-pressed={stayInTool}
+        onClick={() => setStayInTool(!stayInTool)}
+        className={btn(stayInTool)}
+      >
+        {svg(
+          <>
+            <rect x="5.5" y="11" width="13" height="9" rx="1.5" />
+            <path
+              d={stayInTool ? 'M8.5 11V8a3.5 3.5 0 0 1 7 0v3' : 'M8.5 11V8a3.5 3.5 0 0 1 6.8-1.2'}
+            />
+          </>,
+        )}
+      </button>
     </nav>
   );
 }

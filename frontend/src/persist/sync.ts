@@ -20,19 +20,26 @@ export async function restoreLayout(signal?: AbortSignal): Promise<void> {
   }
   useChartStore.setState({ symbol: layout.symbol, interval: layout.interval });
   useIndicatorStore.getState().restore(layout.indicators, layout.volumeVisible);
-  useDrawingStore.getState().setMagnet(layout.magnet);
+  useDrawingStore.setState({
+    magnet: layout.magnet,
+    stayInTool: layout.stayInTool,
+    drawingBar: layout.drawingBar,
+  });
 }
 
 function currentLayout(): Layout {
   const { symbol, interval } = useChartStore.getState();
   const { instances, volumeVisible } = useIndicatorStore.getState();
+  const { magnet, stayInTool, drawingBar } = useDrawingStore.getState();
   return {
     version: 1,
     symbol,
     interval,
     indicators: instances,
     volumeVisible,
-    magnet: useDrawingStore.getState().magnet,
+    magnet,
+    stayInTool,
+    drawingBar,
   };
 }
 
@@ -86,7 +93,12 @@ export function startPersistence(): () => void {
     useIndicatorStore.subscribe(onLayoutMaybeChanged),
     useDrawingStore.subscribe((s, prev) => {
       if (s.rev !== prev.rev && s.symbol && !s.loading) drawingSaver.schedule(s.symbol, s.drawings);
-      if (s.magnet !== prev.magnet) onLayoutMaybeChanged();
+      if (
+        s.magnet !== prev.magnet ||
+        s.stayInTool !== prev.stayInTool ||
+        s.drawingBar !== prev.drawingBar
+      )
+        onLayoutMaybeChanged();
     }),
   ];
   const onHide = () => {

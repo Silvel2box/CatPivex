@@ -20,6 +20,7 @@ const fib = (id: string): Drawing => ({
 });
 
 beforeEach(() => {
+  st().setStayInTool(false);
   st().startLoading('BINANCE:BTCUSDT');
   st().load('BINANCE:BTCUSDT', []);
 });
@@ -98,5 +99,34 @@ describe('T4.14 undo / redo', () => {
     st().undo();
     st().undo();
     expect(st().drawings[0]).toEqual(fib('f'));
+  });
+});
+
+describe('T6.4 stay in drawing mode', () => {
+  it('off: add drops the tool and selects the new drawing', () => {
+    st().setTool('hline');
+    st().add(hline('h', 1));
+    expect(st().tool).toBeNull();
+    expect(st().selectedId).toBe('h');
+  });
+
+  it('on: add keeps the tool and selects nothing; still one undo step per drawing', () => {
+    st().setStayInTool(true);
+    st().setTool('fib');
+    st().add(fib('f1'));
+    st().add(fib('f2'));
+    expect(st().tool).toBe('fib');
+    expect(st().selectedId).toBeNull();
+    expect(st().drawings.map((d) => d.id)).toEqual(['f1', 'f2']);
+    st().undo();
+    expect(st().drawings.map((d) => d.id)).toEqual(['f1']);
+  });
+
+  it('on: leaving the tool (setTool(null)) still works', () => {
+    st().setStayInTool(true);
+    st().setTool('hline');
+    st().add(hline('h', 1));
+    st().setTool(null);
+    expect(st().tool).toBeNull();
   });
 });
