@@ -168,16 +168,19 @@ export function buildLegend(input: {
       id: s.id,
       label: instanceLabel(s.def, s.params),
       hidden: s.hidden === true,
-      values: (s.hidden ? [] : s.def.lines).map((l) => {
+      values: (s.hidden ? [] : s.def.lines).flatMap((l) => {
         const points = s.lines[l.key] ?? [];
         const j = bar ? indexAt(points, bar.time) : -1;
         const v = j >= 0 ? points[j].value : undefined;
+        if (v === undefined && l.gaps) return [];
         const color = s.colors[l.key] ?? l.color;
-        return {
-          line: l.key,
-          text: formatValue(v),
-          color: l.kind === 'histogram' && v !== undefined ? histColor(v, color) : color,
-        };
+        return [
+          {
+            line: l.key,
+            text: formatValue(v),
+            color: l.kind === 'histogram' && v !== undefined ? histColor(v, color) : color,
+          },
+        ];
       }),
     })),
   };

@@ -225,3 +225,27 @@ describe('T7.4 legend rows for hidden instances', () => {
     expect(withHiddenSources(list, [], DEFS, '1D')).toEqual([]);
   });
 });
+
+describe('legend gap lines', () => {
+  it('a gaps line without a value at the bar is left out; other lines still show "—"', () => {
+    const bars = [{ time: 60, open: 1, high: 2, low: 1, close: 2, volume: 1 }];
+    const legend = buildLegend({
+      symbol: 'BINANCE:BTCUSDT',
+      interval: '1m',
+      bars,
+      time: null,
+      sources: [
+        {
+          id: 'p',
+          def: INDICATORS.pivot,
+          params: { kind: 0, timeframe: 0 },
+          colors: {},
+          lines: { P: [{ time: 60, value: 1.5 }], R1: [{ time: 60, value: 2 }] },
+        },
+        { id: 's', def: INDICATORS.sma, params: { period: 20 }, colors: {}, lines: {} },
+      ],
+    });
+    expect(legend.rows[0].values.map((v) => v.line)).toEqual(['R1', 'P']);
+    expect(legend.rows[1].values.map((v) => v.text)).toEqual(['—']);
+  });
+});

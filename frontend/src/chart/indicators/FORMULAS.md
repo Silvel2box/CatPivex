@@ -33,4 +33,4 @@ Incremental results must equal a full recompute (T3.2).
   - Camarilla: same `P`; `R1/S1 = C ± 1.1(H−L)/12`, `R2/S2 = C ± 1.1(H−L)/6`, `R3/S3 = C ± 1.1(H−L)/4`, `R4/S4 = C ± 1.1(H−L)/2`.
   - `R4`/`S4` only for Camarilla. Fixture: pandas groupby of daily candles + `shift(1)`.
 
-`gaps: true` lines: the chart shows a break (whitespace) on bars where the line has no value, instead of joining across.
+`gaps: true` lines: the chart shows a break (whitespace) on bars where the line has no value, instead of joining across. Lightweight Charts 5.3 joins real points across whitespace, so the point before a gap is also drawn transparent (it colours the segment that starts there). The legend leaves out a gaps line that has no value at the shown bar.
