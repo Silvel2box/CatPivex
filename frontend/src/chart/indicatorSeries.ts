@@ -7,6 +7,7 @@ import {
   type LineWidth,
   type UTCTimestamp,
 } from 'lightweight-charts';
+import { fetchCandles } from '../api/client';
 import type { Candle, Interval } from '../api/types';
 import { DEFAULT_LINE_WIDTH, type IndicatorInstance } from '../store/indicatorStore';
 import { activeInstances, toSeriesData, toSeriesPoint, type LegendSource } from './indicatorData';
@@ -14,6 +15,7 @@ import {
   INDICATORS,
   dayKeyFor,
   runIndicator,
+  type CalcContext,
   type IndicatorDef,
   type IndicatorRun,
   type LinePoint,
@@ -21,6 +23,9 @@ import {
 
 const SUB_PANE_STRETCH = 0.3; // relative to the candle pane (1)
 const LEVEL_COLOR = '#787b86';
+const DAILY_MAX = 1000; // backend limit
+const DAILY_MARGIN_DAYS = 70; // the previous month of the oldest bar
+const DAILY_STEP = 100;
 
 type LineApi = ISeriesApi<'Line'> | ISeriesApi<'Histogram'>;
 
@@ -55,11 +60,21 @@ export class IndicatorLayer {
   private logged = new Set<string>();
   private chart: IChartApi;
   private run: typeof runIndicator;
+  private fetchDaily: typeof fetchCandles;
+  /** 1D candles per symbol (null = the fetch failed) and the limit they were fetched with. */
+  private daily = new Map<string, { limit: number; candles: Candle[] | null }>();
+  private dailyReq: { symbol: string; limit: number; abort: AbortController } | null = null;
+  private lastDay: string | null = null;
 
-  /** `run` is injectable for tests. */
-  constructor(chart: IChartApi, run: typeof runIndicator = runIndicator) {
+  /** `run` and `fetchDaily` are injectable for tests. */
+  constructor(
+    chart: IChartApi,
+    run: typeof runIndicator = runIndicator,
+    fetchDaily: typeof fetchCandles = fetchCandles,
+  ) {
     this.chart = chart;
     this.run = run;
+    this.fetchDaily = fetchDaily;
   }
 
   /** Store changed: add/remove series, rerun only instances that are new or got new params. */
@@ -73,6 +88,8 @@ export class IndicatorLayer {
     this.symbol = symbol;
     this.interval = interval;
     this.bars = bars;
+    const last = bars[bars.length - 1];
+    this.lastDay = last ? this.barDay(last.time) : null;
     const fresh = this.reconcile();
     for (const e of this.entries.values()) if (!fresh.has(e)) this.compute(e);
   }
@@ -99,6 +116,9 @@ export class IndicatorLayer {
         e.run = null;
       }
     }
+    const day = this.barDay(bar.time);
+    if (this.lastDay !== null && day > this.lastDay) this.onNewDay();
+    if (this.lastDay === null || day > this.lastDay) this.lastDay = day;
   }
 
   /** Rendered instances in store order, for the legend. */
@@ -170,6 +190,7 @@ export class IndicatorLayer {
         e.inst = inst;
       }
     }
+    this.ensureDaily();
     return computed;
   }
 
@@ -216,7 +237,7 @@ export class IndicatorLayer {
 
   private compute(e: Entry): void {
     try {
-      e.run = this.run(e.def.calc, e.inst.params, dayKeyFor(this.symbol), this.bars);
+      e.run = this.run(e.def.calc, e.inst.params, this.context(), this.bars);
     } catch (err) {
       e.run = null;
       this.fail(e, err);
@@ -242,6 +263,77 @@ export class IndicatorLayer {
         e.series[line.key].applyOptions({ color, lineWidth: this.width(e, line.key) });
       }
     }
+  }
+
+  private context(): CalcContext {
+    const daily =
+      this.interval === '1D' ? this.bars : (this.daily.get(this.symbol)?.candles ?? null);
+    return { ...dayKeyFor(this.symbol), interval: this.interval, daily };
+  }
+
+  private barDay(time: number): string {
+    return this.interval === '1D' || this.interval === '1W'
+      ? new Date(time * 1000).toISOString().slice(0, 10)
+      : dayKeyFor(this.symbol).dayKey(time);
+  }
+
+  private needsDaily(): boolean {
+    for (const e of this.entries.values()) if (e.def.needsDaily) return true;
+    return false;
+  }
+
+  private recomputeDaily(): void {
+    for (const e of this.entries.values()) if (e.def.needsDaily) this.compute(e);
+  }
+
+  /** The previous day's candle is complete now: refetch (or on 1D, rerun on the chart bars). */
+  private onNewDay(): void {
+    if (!this.needsDaily()) return;
+    if (this.interval === '1D') {
+      this.recomputeDaily();
+      return;
+    }
+    this.daily.delete(this.symbol);
+    if (this.dailyReq?.symbol === this.symbol) {
+      this.dailyReq.abort.abort();
+      this.dailyReq = null;
+    }
+    this.ensureDaily();
+  }
+
+  private dailyLimit(): number {
+    const now = Date.now() / 1000;
+    const days = Math.ceil((now - (this.bars[0]?.time ?? now)) / 86400) + DAILY_MARGIN_DAYS;
+    return Math.min(DAILY_MAX, Math.ceil(days / DAILY_STEP) * DAILY_STEP);
+  }
+
+  private ensureDaily(): void {
+    if (!this.symbol || this.interval === '1D' || !this.needsDaily()) return;
+    const symbol = this.symbol;
+    const limit = this.dailyLimit();
+    if ((this.daily.get(symbol)?.limit ?? 0) >= limit) return;
+    const req = this.dailyReq;
+    if (req?.symbol === symbol && req.limit >= limit) return;
+    req?.abort.abort();
+    const abort = new AbortController();
+    this.dailyReq = { symbol, limit, abort };
+    this.fetchDaily({ symbol, interval: '1D', limit }, abort.signal)
+      .then(
+        (res) => res.candles,
+        (err: unknown) => {
+          if (!abort.signal.aborted && !this.logged.has(`daily:${symbol}`)) {
+            this.logged.add(`daily:${symbol}`);
+            console.error(`Daily candles for ${symbol} failed; pivots skipped`, err);
+          }
+          return null;
+        },
+      )
+      .then((candles) => {
+        if (abort.signal.aborted) return;
+        this.dailyReq = null;
+        this.daily.set(symbol, { limit, candles });
+        if (symbol === this.symbol && this.interval !== '1D') this.recomputeDaily();
+      });
   }
 
   private fail(e: Entry, err: unknown): void {

@@ -145,6 +145,29 @@ describe('T4.8 sanitizeLayout', () => {
     expect(out.indicators).toEqual([sma]);
   });
 
+  it('T7 select params: listed option values kept, anything else drops the indicator', () => {
+    const pivot = (id: string, params: unknown) => ({
+      id,
+      type: 'pivot',
+      params,
+      colors: {},
+      widths: {},
+      visible: true,
+    });
+    const out = sanitizeLayout({
+      indicators: [
+        pivot('p1', { kind: 3, timeframe: 0 }),
+        pivot('p2', { kind: 0.5, timeframe: 0 }),
+        pivot('p3', { kind: 'Camarilla', timeframe: 0 }),
+        pivot('p4', { kind: 2 }),
+        pivot('p5', { kind: 2, timeframe: 3 }),
+      ],
+    });
+    expect(out.indicators.map((i) => [i.id, i.params])).toEqual([
+      ['p5', { kind: 2, timeframe: 3 }],
+    ]);
+  });
+
   it('strips unknown param keys', () => {
     const out = sanitizeLayout({ indicators: [{ ...sma, params: { period: 50, junk: 1 } }] });
     expect(out.indicators[0].params).toEqual({ period: 50 });

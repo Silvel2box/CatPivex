@@ -54,9 +54,11 @@ export function indexAt<T extends { time: number }>(points: T[], time: number): 
   return -1;
 }
 
-/** `SMA 20`, `MACD 12 26 9`, `VWAP`. */
+/** `SMA 20`, `MACD 12 26 9`, `VWAP`, `Pivot Points Standard Auto`. */
 export function instanceLabel(def: IndicatorDef, params: Params): string {
-  return [def.label, ...def.params.map((f) => String(params[f.key]))].join(' ');
+  const text = (f: IndicatorDef['params'][number]) =>
+    f.options?.find((o) => o.value === params[f.key])?.label ?? String(params[f.key]);
+  return [def.label, ...def.params.map(text)].join(' ');
 }
 
 const fmt2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

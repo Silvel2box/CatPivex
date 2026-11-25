@@ -181,6 +181,122 @@ def cases(df: pd.DataFrame, tz: str) -> list[dict]:
     return out
 
 
+# ---------- Phase 7: pivot points (daily candles) ----------
+
+
+def fetch_binance_daily(symbol: str, start: int, end: int) -> list[list[float]]:
+    import urllib.request
+
+    url = (
+        "https://api.binance.com/api/v3/klines"
+        f"?symbol={symbol}&interval=1d&startTime={start * 1000}&endTime={end * 1000}&limit=1000"
+    )
+    with urllib.request.urlopen(url, timeout=30) as r:
+        rows = json.load(r)
+    return [[k[0] // 1000, *(float(x) for x in k[1:6])] for k in rows]
+
+
+def fetch_yahoo_daily(ticker: str, start: str, end: str) -> list[list[float]]:
+    """Daily bars, time = 00:00 UTC of the New York trading date (as the backend serves 1D)."""
+    import yfinance as yf
+    from curl_cffi import CurlOpt
+    from curl_cffi import requests as curl_requests
+
+    yf.config.debug.hide_exceptions = False
+    session = curl_requests.Session(impersonate="chrome", curl_options={CurlOpt.ECH: "false"})
+    for attempt in range(4):
+        try:
+            df = yf.Ticker(ticker, session=session).history(
+                start=start, end=end, interval="1d", auto_adjust=False, actions=False
+            )
+            break
+        except Exception as e:  # noqa: BLE001
+            print(f"yahoo daily attempt {attempt + 1} failed: {e}")
+    else:
+        raise RuntimeError("yahoo daily fetch failed")
+    df = df.dropna(subset=["Open", "High", "Low", "Close", "Volume"])
+    return [
+        [
+            int(pd.Timestamp(ts.date(), tz="UTC").timestamp()),
+            float(r.Open),
+            float(r.High),
+            float(r.Low),
+            float(r.Close),
+            float(r.Volume),
+        ]
+        for ts, r in df.iterrows()
+    ]
+
+
+DAILY_BEFORE_DAYS = 120
+
+
+def daily_fetcher(name: str, df: pd.DataFrame, tz: str):
+    """1D candles from DAILY_BEFORE_DAYS before the first bar's date to the last bar's date."""
+    first, last = int(df["time"].iloc[0]), int(df["time"].iloc[-1])
+    if name == "btcusdt_1h":
+        return lambda: fetch_binance_daily("BTCUSDT", first - DAILY_BEFORE_DAYS * 86400, last)
+    days = pd.to_datetime(df["time"], unit="s", utc=True).dt.tz_convert(tz).dt.date
+    start = (days.iloc[0] - pd.Timedelta(days=DAILY_BEFORE_DAYS)).isoformat()
+    end = (days.iloc[-1] + pd.Timedelta(days=1)).isoformat()
+    return lambda: fetch_yahoo_daily("AAPL", start, end)
+
+
+PIVOT_AUTO = {"1m": "D", "5m": "D", "15m": "D", "1h": "W", "4h": "W", "1D": "M", "1W": "M"}
+PIVOT_TIMEFRAMES = {0: None, 1: "D", 2: "W", 3: "M"}
+
+
+def pivot_period(dates: pd.Series, tf: str) -> pd.Series:
+    d = pd.to_datetime(dates)
+    if tf == "D":
+        return d.dt.strftime("%Y-%m-%d")
+    if tf == "M":
+        return d.dt.strftime("%Y-%m")
+    iso = d.dt.isocalendar()
+    return iso["year"].astype(str) + "-W" + iso["week"].astype(str).str.zfill(2)
+
+
+def pivot_pandas(bar_dates: pd.Series, daily: pd.DataFrame, tf: str, kind: int) -> dict:
+    """Previous period's H/L/C per FORMULAS.md: groupby period of the daily candles + shift(1)."""
+    ddates = pd.to_datetime(daily["time"], unit="s", utc=True).dt.date
+    g = daily.groupby(pivot_period(ddates, tf)).agg(
+        high=("high", "max"), low=("low", "min"), close=("close", "last")
+    )
+    keys = pivot_period(bar_dates, tf)
+    assert keys.isin(g.index).all(), "daily candles do not cover every bar's period"
+    prev = g.shift(1).reindex(keys)
+    H, L, C = (prev[k].to_numpy(dtype=float) for k in ("high", "low", "close"))
+    P = (H + L + C) / 3
+    r = H - L
+    if kind == 0:
+        return {"P": P, "R1": 2 * P - L, "S1": 2 * P - H, "R2": P + r, "S2": P - r,
+                "R3": H + 2 * (P - L), "S3": L - 2 * (H - P)}
+    if kind == 1:
+        return {"P": P, "R1": P + 0.382 * r, "S1": P - 0.382 * r, "R2": P + 0.618 * r,
+                "S2": P - 0.618 * r, "R3": P + r, "S3": P - r}
+    k = 1.1 * r
+    return {"P": P, "R1": C + k / 12, "S1": C - k / 12, "R2": C + k / 6, "S2": C - k / 6,
+            "R3": C + k / 4, "S3": C - k / 4, "R4": C + k / 2, "S4": C - k / 2}
+
+
+def pivot_cases(name: str, df: pd.DataFrame, daily: pd.DataFrame, tz: str, interval: str) -> list[dict]:
+    bar_dates = pd.to_datetime(df["time"], unit="s", utc=True).dt.tz_convert(tz).dt.date
+    combos = [(kind, 0) for kind in (0, 1, 2)]
+    if name == "btcusdt_1h":
+        combos += [(0, 1), (1, 2), (2, 3)]
+    out = []
+    for kind, timeframe in combos:
+        tf = PIVOT_TIMEFRAMES[timeframe] or PIVOT_AUTO[interval]
+        lines = pivot_pandas(bar_dates, daily, tf, kind)
+        out.append({
+            "type": "pivot",
+            "params": {"kind": kind, "timeframe": timeframe},
+            "library": f"pandas groupby(period {tf}).agg + shift(1)",
+            "lines": {k: line(v) for k, v in lines.items()},
+        })
+    return out
+
+
 def main() -> None:
     refetch = "--refetch" in sys.argv
     libs = {
@@ -218,6 +334,12 @@ def main() -> None:
             "candles": {k: df[k].tolist() for k in df.columns},
             "cases": cases(df, tz),
         }
+        daily_rows = load_candles(name.split("_")[0] + "_1d", daily_fetcher(name, df, tz), refetch)
+        daily = pd.DataFrame(daily_rows, columns=["time", "open", "high", "low", "close", "volume"])
+        assert daily["time"].is_monotonic_increasing and daily["time"].is_unique
+        fixture["daily"] = {k: daily[k].tolist() for k in daily.columns}
+        fixture["cases"] += pivot_cases(name, df, daily, tz, interval)
+
         path = OUT / f"{name}.json"
         path.write_text(json.dumps(fixture), encoding="utf-8")
         written.append(path)

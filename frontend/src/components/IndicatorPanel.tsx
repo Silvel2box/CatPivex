@@ -52,6 +52,34 @@ function ParamInput({
   );
 }
 
+function ParamSelect({
+  field,
+  value,
+  onCommit,
+}: {
+  field: ParamField;
+  value: number;
+  onCommit: (value: number) => void;
+}) {
+  return (
+    <label className="flex items-center gap-1 text-[11px] text-[#787b86]">
+      {field.label}
+      <select
+        data-testid={`ind-param-${field.key}`}
+        value={value}
+        onChange={(e) => onCommit(Number(e.target.value))}
+        className="rounded border border-[#2a2e39] bg-[#131722] px-0.5 py-0.5 text-[11px] text-[#d1d4dc] outline-none focus:border-[#2962ff]"
+      >
+        {field.options?.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function InstanceRow({ inst }: { inst: IndicatorInstance }) {
   const { remove, updateParams, setColor, setWidth, toggleVisible } = useIndicatorStore.getState();
   const def = INDICATORS[inst.type];
@@ -91,14 +119,23 @@ function InstanceRow({ inst }: { inst: IndicatorInstance }) {
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        {def.params.map((f) => (
-          <ParamInput
-            key={f.key}
-            field={f}
-            value={inst.params[f.key]}
-            onCommit={(v) => commit({ [f.key]: v })}
-          />
-        ))}
+        {def.params.map((f) =>
+          f.options ? (
+            <ParamSelect
+              key={f.key}
+              field={f}
+              value={inst.params[f.key]}
+              onCommit={(v) => commit({ [f.key]: v })}
+            />
+          ) : (
+            <ParamInput
+              key={f.key}
+              field={f}
+              value={inst.params[f.key]}
+              onCommit={(v) => commit({ [f.key]: v })}
+            />
+          ),
+        )}
         {def.lines.map((l) => (
           <label
             key={l.key}

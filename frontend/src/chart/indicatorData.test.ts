@@ -12,6 +12,7 @@ import {
   instanceLabel,
   toSeriesData,
 } from './indicatorData';
+import { INDICATORS } from './indicators';
 import type { IndicatorCalc, IndicatorDef, Params } from './indicators/types';
 
 // Fake calc: never called by these helpers, only needed to satisfy IndicatorDef.
@@ -102,6 +103,9 @@ describe('T3.7 indicator helpers', () => {
     expect(instanceLabel(DEFS.sma, { period: 50 })).toBe('SMA 50');
     expect(instanceLabel(DEFS.macd, { fast: 12, slow: 26, signal: 9 })).toBe('MACD 12 26 9');
     expect(instanceLabel(DEFS.vwap, {})).toBe('VWAP');
+    expect(instanceLabel(INDICATORS.pivot, { kind: 2, timeframe: 0 })).toBe(
+      'Pivot Points Camarilla Auto',
+    );
     expect(formatValue(95123.456)).toBe('95,123.46');
     expect(formatValue(1.08543)).toBe('1.0854');
     expect(formatValue(-0.001234)).toBe('-0.001234');

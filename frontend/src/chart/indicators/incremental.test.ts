@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Candle } from '../../api/types';
-import { candlesOf, FIXTURES } from './fixtures/load';
-import { dayKeyFor, INDICATORS, runIndicator } from './index';
+import { candlesOf, contextOf, FIXTURES } from './fixtures/load';
+import { INDICATORS, runIndicator } from './index';
 import type { BarValues, CalcContext, IndicatorCalc, IndicatorRun, Params } from './types';
 
 /** Realtime ticks of a bar: partial states (f = 0 → no volume, so VWAP loses its point), then the bar. */
@@ -51,7 +51,7 @@ function stream(
 describe('T3.2 incremental update == full recompute', () => {
   for (const f of FIXTURES) {
     const bars = candlesOf(f);
-    const ctx = dayKeyFor(f.symbol);
+    const ctx = contextOf(f);
     for (const c of f.cases) {
       const calc = INDICATORS[c.type].calc;
       const name = `${f.name} ${c.type} ${JSON.stringify(c.params)}`;
