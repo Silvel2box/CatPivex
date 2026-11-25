@@ -40,6 +40,33 @@ export function toSeriesData(kind: LineDef['kind'], points: LinePoint[], color: 
   return points.map((p) => toSeriesPoint(kind, p, color));
 }
 
+export type SeriesItem = SeriesPoint | { time: number };
+
+export const GAP_COLOR = 'transparent';
+
+/**
+ * `gaps` lines: whitespace on every bar time from the first point on where there is no point.
+ * Lightweight Charts still joins a line across whitespace and colours a segment by its starting
+ * point, so on a line the point before a gap gets GAP_COLOR.
+ */
+export function withGaps(kind: LineDef['kind'], points: SeriesPoint[], times: number[]) {
+  const out: SeriesItem[] = [];
+  if (points.length === 0) return out;
+  let j = 0;
+  for (const t of times) {
+    while (j < points.length && points[j].time < t) out.push(points[j++]);
+    if (points[j]?.time === t) {
+      out.push(points[j++]);
+    } else if (t > points[0].time) {
+      const prev = out[out.length - 1];
+      if (kind === 'line' && 'value' in prev) out[out.length - 1] = { ...prev, color: GAP_COLOR };
+      out.push({ time: t });
+    }
+  }
+  while (j < points.length) out.push(points[j++]);
+  return out;
+}
+
 /** Index of the point at `time` in an ascending array, or -1. */
 export function indexAt<T extends { time: number }>(points: T[], time: number): number {
   let lo = 0;

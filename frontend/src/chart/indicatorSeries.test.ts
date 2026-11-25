@@ -3,9 +3,18 @@ import { describe, expect, it, vi } from 'vitest';
 import type { fetchCandles } from '../api/client';
 import type { Candle, CandlesResponse } from '../api/types';
 import type { IndicatorInstance } from '../store/indicatorStore';
-import { HIST_DOWN } from './indicatorData';
+import { GAP_COLOR, HIST_DOWN } from './indicatorData';
 import { IndicatorLayer } from './indicatorSeries';
-import type { CalcContext, IndicatorRun, LinePoint, Params } from './indicators/types';
+import { applyRealtimeBar } from './series';
+import { runIndicator } from './indicators';
+import type {
+  BarValues,
+  CalcContext,
+  IndicatorCalc,
+  IndicatorRun,
+  LinePoint,
+  Params,
+} from './indicators/types';
 
 /** Minimal stand-in for the chart: panes of series, empty panes (except 0) disappear. */
 function fakeChart() {
@@ -13,10 +22,10 @@ function fakeChart() {
   interface FakeSeries {
     opts: Record<string, unknown>;
     data: { time: number; value: number; color?: string }[];
-    updates: { time: number; value: number; color?: string }[];
+    updates: { time: number; value: number; color?: string; historical?: boolean }[];
     priceLines: number[];
     setData(d: FakeSeries['data']): void;
-    update(p: FakeSeries['data'][number]): void;
+    update(p: FakeSeries['data'][number], historical?: boolean): void;
     applyOptions(o: Record<string, unknown>): void;
     options(): Record<string, unknown>;
     createPriceLine(o: { price: number }): void;
@@ -38,8 +47,8 @@ function fakeChart() {
         setData(d) {
           s.data = d;
         },
-        update(p) {
-          s.updates.push(p);
+        update(p, historical) {
+          s.updates.push(historical ? { ...p, historical } : p);
         },
         applyOptions(o) {
           Object.assign(s.opts, o);
@@ -340,5 +349,95 @@ describe('T7.3 IndicatorLayer daily candles for pivots', () => {
     expect(err).toHaveBeenCalledTimes(1);
     expect(panes[0]).toHaveLength(9);
     err.mockRestore();
+  });
+});
+
+describe('T7.2 gaps lines (fake chart, real runner)', () => {
+  // close > open → up (and SMA "value"), close < open → down, flat → nothing.
+  const splitCalc: IndicatorCalc<Params, null> = {
+    init: () => null,
+    next(state, c) {
+      let out: BarValues | null = null;
+      if (c.close > c.open) out = { up: c.close, value: c.close };
+      else if (c.close < c.open) out = { down: c.close };
+      return { state, out };
+    },
+  };
+  const run = (
+    _calc: unknown,
+    params: Params,
+    ctx: Parameters<typeof runIndicator>[2],
+    bars: Candle[],
+  ) => runIndicator(splitCalc, params, ctx, bars);
+
+  const setup = (bars: Candle[]) => {
+    const { chart, panes } = fakeChart();
+    const layer = new IndicatorLayer(chart, run);
+    layer.setSource('BINANCE:BTCUSDT', '1m', bars);
+    layer.setInstances([inst('st', 'supertrend'), inst('s', 'sma', { period: 20 })]);
+    const [up, down, sma] = panes[0];
+    return { layer, up, down, sma };
+  };
+
+  it('setData: whitespace after the first point for gaps lines only', () => {
+    const { up, down, sma } = setup([
+      bar(60, 2, 2),
+      bar(120, 1, 2),
+      bar(180, 3, 1),
+      bar(240, 1, 4),
+    ]);
+    expect(up.data).toEqual([
+      { time: 120, value: 2, color: GAP_COLOR },
+      { time: 180 },
+      { time: 240, value: 4 },
+    ]);
+    expect(down.data).toEqual([{ time: 180, value: 1, color: GAP_COLOR }, { time: 240 }]);
+    expect(sma.data).toEqual([
+      { time: 120, value: 2 },
+      { time: 240, value: 4 },
+    ]);
+  });
+
+  it('realtime: gap → value → gap on the same bar, break colour on the point before a gap', () => {
+    const bars = [bar(60, 2, 2), bar(120, 1, 2)];
+    const { layer, up, down, sma } = setup(bars);
+    // As ChartView: the bar is merged into the candles before the layer update.
+    const tick = (b: Candle) => {
+      applyRealtimeBar(bars, b);
+      layer.update(b);
+    };
+    tick(bar(180, 1, 3));
+    expect(down.updates).toEqual([]); // not started: no whitespace
+    tick(bar(240, 4, 3));
+    tick(bar(240, 4, 6));
+    tick(bar(240, 4, 2));
+    tick(bar(300, 1, 5));
+    expect(up.updates).toEqual([
+      { time: 120, value: 2, historical: true },
+      { time: 180, value: 3 },
+      { time: 180, value: 3, color: GAP_COLOR, historical: true },
+      { time: 240 },
+      { time: 180, value: 3, historical: true },
+      { time: 240, value: 6 },
+      { time: 180, value: 3, color: GAP_COLOR, historical: true },
+      { time: 240 },
+      { time: 180, value: 3, color: GAP_COLOR, historical: true }, // 240 is still a gap
+      { time: 300, value: 5 },
+    ]);
+    expect(down.updates).toEqual([
+      { time: 240, value: 3 },
+      { time: 240 },
+      { time: 240, value: 2 },
+      { time: 240, value: 2, color: GAP_COLOR, historical: true },
+      { time: 300 },
+    ]);
+    expect(sma.updates).toEqual([
+      { time: 180, value: 3 },
+      { time: 240, value: 6 },
+      { time: 300, value: 5 },
+    ]);
+    const lines = layer.debug()[0].lines;
+    expect(lines.up).toMatchObject({ count: 3, last: { time: 300, value: 5 } });
+    expect(lines.down).toMatchObject({ count: 1, last: { time: 240, value: 2 } });
   });
 });
