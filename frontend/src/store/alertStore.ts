@@ -8,6 +8,7 @@ import {
 } from '../api/alerts';
 import type { Alert, AlertCreate, AlertEvent, AlertUpdate } from '../api/types';
 import { flushDrawingSaves } from '../persist/drawingFlush';
+import { requestAlertPermission } from '../realtime/alertNotify';
 import { startPolling, type VisibilitySource } from '../realtime/poll';
 
 export const EVENTS_POLL_MS = 5_000;
@@ -221,6 +222,14 @@ export const useAlertStore = create<AlertState>()((set, get) => {
     dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
   };
 });
+
+export function addLineAlert(symbol: string, drawingId: string, price: number): void {
+  requestAlertPermission();
+  const store = useAlertStore.getState();
+  void store.addForLine(symbol, drawingId, price).then((created) => {
+    if (!created) store.pushToast('Alert not created', useAlertStore.getState().error ?? '');
+  });
+}
 
 export function startAlertPolling(
   notify: AlertNotifier,

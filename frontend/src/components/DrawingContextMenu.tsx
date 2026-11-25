@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { requestAlertPermission } from '../realtime/alertNotify';
-import { alertForLine, useAlertStore } from '../store/alertStore';
+import { alertLevel } from '../chart/drawings/geometry';
+import { addLineAlert, alertForLine, useAlertStore } from '../store/alertStore';
 import { useDrawingStore } from '../store/drawingStore';
 
 const item =
@@ -29,15 +29,8 @@ export function DrawingContextMenu() {
     fn();
     closeMenu();
   };
-  const lineAlert =
-    drawing.type === 'hline' && symbol ? alertForLine(alerts, symbol, drawing.id) : null;
-  const addAlert = (lineSymbol: string, id: string, price: number) => {
-    requestAlertPermission();
-    const store = useAlertStore.getState();
-    void store.addForLine(lineSymbol, id, price).then((created) => {
-      if (!created) store.pushToast('Alert not created', useAlertStore.getState().error ?? '');
-    });
-  };
+  const level = alertLevel(drawing);
+  const lineAlert = level !== null && symbol ? alertForLine(alerts, symbol, drawing.id) : null;
 
   return (
     <div
@@ -73,7 +66,7 @@ export function DrawingContextMenu() {
           <div className="my-1 h-px bg-[#2a2e39]" />
         </>
       )}
-      {drawing.type === 'hline' && symbol && (
+      {level !== null && symbol && (
         <>
           {lineAlert ? (
             <>
@@ -104,7 +97,7 @@ export function DrawingContextMenu() {
               role="menuitem"
               data-testid="menu-add-alert"
               className={item}
-              onClick={run(() => addAlert(symbol, drawing.id, drawing.price))}
+              onClick={run(() => addLineAlert(symbol, drawing.id, level))}
             >
               Add alert
             </button>

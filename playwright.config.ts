@@ -3,8 +3,9 @@ import { defineConfig } from "@playwright/test";
 // E2E runs its own servers on separate ports with a separate DB (backend/e2e.db), so it never
 // touches a dev session you have open on 8000/5173 or your real watchlist. Data is real (Binance/Yahoo).
 // Uses the installed Edge, no browser download.
-export const E2E_API = "http://127.0.0.1:8100";
-const WEB_PORT = 5180;
+const API_PORT = process.env.CATPIVEX_E2E_API_PORT ?? "8100";
+const WEB_PORT = process.env.CATPIVEX_E2E_WEB_PORT ?? "5180";
+export const E2E_API = `http://127.0.0.1:${API_PORT}`;
 
 export default defineConfig({
   testDir: "e2e",
@@ -18,8 +19,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command:
-        "cd backend && .venv\\Scripts\\python -m uvicorn app.main:app --host 127.0.0.1 --port 8100",
+      command: `cd backend && .venv\\Scripts\\python -m uvicorn app.main:app --host 127.0.0.1 --port ${API_PORT}`,
       url: `${E2E_API}/api/health`,
       env: {
         CATPIVEX_DB_PATH: "e2e.db",

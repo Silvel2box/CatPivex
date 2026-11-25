@@ -170,6 +170,11 @@ export function moveDrawing(
   }
 }
 
+/** Price an alert on this drawing follows; null = the drawing cannot carry an alert. */
+export function alertLevel(d: Drawing): number | null {
+  return d.type === 'hline' ? d.price : null;
+}
+
 // ---- Sanitize ----------------------------------------------------------------------------------
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
