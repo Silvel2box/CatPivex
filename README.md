@@ -4,6 +4,8 @@ Personal TradingView-style chart app that runs on localhost. Spec: [`PLAN-tradin
 
 Charts by [TradingView Lightweight Charts](https://www.tradingview.com/lightweight-charts/) (Apache 2.0). The licence's attribution link is shown under the watchlist; keep it if you fork this.
 
+Free for personal and community use; **commercial use is not allowed**. See [Terms of use](#terms-of-use).
+
 ## Setup (Windows)
 
 Needs Python 3.11+ (`python` on PATH), Node 22+, and Microsoft Edge (used by the e2e tests).
@@ -23,6 +25,10 @@ Phone notifications are optional. Fill in either channel in `backend/.env`, rest
 
 - **Telegram:** message [@BotFather](https://t.me/BotFather), `/newbot`, copy the token to `TELEGRAM_BOT_TOKEN`. Send any message to your new bot, open `https://api.telegram.org/bot<token>/getUpdates` and copy `message.chat.id` to `TELEGRAM_CHAT_ID`.
 - **LINE (Messaging API, not LINE Notify, which has shut down):** create a Messaging API channel in the [LINE Developers console](https://developers.line.biz/console/). Copy the long-lived channel access token (Messaging API tab) to `LINE_CHANNEL_TOKEN` and "Your user ID" (Basic settings tab) to `LINE_USER_ID`. Add the bot as a friend with its QR code. The free plan has a monthly message quota.
+  - Common mix-ups: the **channel access token** is about 170 characters long. The 32-character "Channel secret" on the Basic settings tab is a different value. The **user ID** starts with `U` and is 33 characters long. The 10-digit "Channel ID" is a different value. Either mix-up gives `HTTP 401` or `400` in `npm run notify:test`.
+  - Messages arrive in the chat with your bot, not in your personal chat. Search your chat list for the bot's name. Some LINE versions put official-account chats in a separate folder.
+
+Known limitation: if you delete a horizontal line that has an alert and then undo (Ctrl+Z), the line comes back but its alert does not. Add the alert again.
 
 ## Run
 
@@ -96,3 +102,19 @@ Test IDs (T1.1, T1.2, …) in test names match the test list in the project trac
 - Backend: `alerts` + `alert_events` tables, `/api/alerts` CRUD, `/api/alerts/events?after=<id>`, APScheduler checks (30 s crypto / 60 s others), Telegram + LINE Messaging API notifiers (tokens never appear in errors or logs), alerts linked to a horizontal line follow it on every drawings save.
 - Frontend: Alerts panel (list, create/edit, enable toggle, history with per-channel delivery status), right-click a horizontal line → Add/Edit/Remove alert, bell mark on lines with an alert, browser notification + sound, in-app toast when notifications are blocked.
 - e2e uses an in-memory `TEST` exchange (`CATPIVEX_TEST_FEED=1`, `PUT /api/test/price`) and never sends real Telegram/LINE messages.
+
+## Terms of use
+
+CatPivex is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE.md).
+
+- **Allowed:** using it for yourself, sharing it with friends and communities, studying it, changing it, and sharing your changes, all without charge. When you share it, include `LICENSE.md` and its `Required Notice` line.
+- **Not allowed without written permission from the author:**
+  - selling it, or charging for access to it
+  - running it as a paid service
+  - putting it inside a commercial product
+  - using it to run a business
+  - removing the licence or the attribution
+- **Not financial advice.** Charts, indicators and alerts are tools only. Every trading decision and its result is yours.
+- **No warranty.** Prices can be delayed (Yahoo data is about 15 minutes behind) or wrong. Alerts can arrive late or not at all, for example when your PC sleeps, the network drops, or a data source fails. Do not rely on CatPivex alone for decisions where money is at stake.
+- **Market data** comes from Binance and Yahoo Finance and is subject to their terms. Yahoo Finance data is for personal use only. CatPivex is not affiliated with Binance, Yahoo, TradingView, Telegram or LINE.
+- **Your tokens and data stay on your machine.** Telegram/LINE tokens live only in `backend/.env`, and alert messages go only to the chat you configure. Never commit `.env` or post your tokens anywhere.
