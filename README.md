@@ -84,11 +84,11 @@ Test IDs (T1.1, T1.2, …) in test names match the test list in the project trac
   - rectangle (Alt+R)
   - Fibonacci retracement (Alt+F)
 - Click to place a drawing. Two-point tools take either two clicks or one press-drag-release. Esc cancels; Delete removes the selected drawing.
-- Click a drawing to select it. Drag its body to move it or an end point to reshape it, and change its colour or width in the toolbar. Dragging empty space still scrolls the chart.
+- Click a drawing to select it. Drag its body to move it or an end point to reshape it, and change its colour or width in the floating bar that appears above the chart (Phase 6). Dragging empty space still scrolls the chart.
 - The magnet (in the toolbar, off by default) is weak: it snaps to the open, high, low or close of the nearest bar only when the mouse is within 10 px of it.
 - Hovering a drawing shows its handles. While you draw, and for the selected drawing, its anchor prices and times are labelled on the axes. A Fibonacci retracement has filled bands, so you can grab it anywhere inside.
 - With a tool active, a dot (and its price/time on the axes) shows where the click will land. Fibonacci points snap to a wick's high or low within 15 px, even with the magnet off. End points can be grabbed from 10 px away.
-- Fibonacci background opacity (0–50%) is set per drawing in the toolbar while it is selected.
+- Fibonacci background opacity (0–50%) is set per drawing in the floating bar while it is selected.
 - Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) undo and redo drawing changes per symbol; a whole drag is one step.
 - Hold Shift while drawing or dragging a trend line end to keep it horizontal, vertical or at 45°.
 - Right-click a drawing for its menu (Delete; for Fibonacci also Reverse and Extend lines right). The same Fibonacci options are in the toolbar.
@@ -102,6 +102,12 @@ Test IDs (T1.1, T1.2, …) in test names match the test list in the project trac
 - Backend: `alerts` + `alert_events` tables, `/api/alerts` CRUD, `/api/alerts/events?after=<id>`, APScheduler checks (30 s crypto / 60 s others), Telegram + LINE Messaging API notifiers (tokens never appear in errors or logs), alerts linked to a horizontal line follow it on every drawings save.
 - Frontend: Alerts panel (list, create/edit, enable toggle, history with per-channel delivery status), right-click a horizontal line → Add/Edit/Remove alert, bell mark on lines with an alert, browser notification + sound, in-app toast when notifications are blocked.
 - e2e uses an in-memory `TEST` exchange (`CATPIVEX_TEST_FEED=1`, `PUT /api/test/price`) and never sends real Telegram/LINE messages.
+
+### Phase 6: drawing tools, round 1 ✅ (2026-11-25)
+- **Horizontal ray** (Alt+J): starts at the point you click and runs to the right. It can carry a price alert like a horizontal line (right-click → Add alert, or the bell in the floating bar); the alert follows the ray when you drag it.
+- **Measure**: the ruler button, or Shift+click on empty chart space, then click the end (or drag). Shows the price change, percent, number of bars and time. It is not saved; the next click or Esc clears it.
+- **Floating bar**: appears when a drawing is selected, with colour, width, Fibonacci options, alert and delete. Drag it by its grip; the position is saved.
+- **Stay in drawing mode** (lock button under the magnet): the tool stays active after each drawing, so you can place several lines in a row. Esc or right-click leaves the tool.
 
 ## Terms of use
 
