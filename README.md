@@ -2,7 +2,7 @@
 
 Personal TradingView-style chart app that runs on localhost. Spec: [`PLAN-trading-chart-webapp.md`](PLAN-trading-chart-webapp.md).
 
-Charts by [TradingView Lightweight Charts](https://www.tradingview.com/lightweight-charts/) (Apache 2.0). The attribution logo stays on.
+Charts by [TradingView Lightweight Charts](https://www.tradingview.com/lightweight-charts/) (Apache 2.0). The licence's attribution link is shown under the watchlist; keep it if you fork this.
 
 ## Setup (Windows)
 
@@ -10,8 +10,19 @@ Needs Python 3.11+ (`python` on PATH), Node 22+, and Microsoft Edge (used by the
 
 ```powershell
 npm run setup              # backend venv + pip, frontend npm install, root npm install
-copy backend\.env.example backend\.env   # optional; defaults work for Phase 1
+copy backend\.env.example backend\.env   # optional: only needed for Telegram/LINE alerts
 ```
+
+`npm run setup` also turns on a git pre-commit hook (`scripts/check_secrets.py`) that refuses commits containing `.env` files, private keys, Telegram/LINE/GitHub tokens, or values filled into `.env.example`. Your tokens belong only in `backend/.env`, which git ignores.
+
+## Price alerts
+
+Open **Alerts** in the top bar to add one (crossing, crossing up/down, ≥, ≤; once or repeat), or right-click a horizontal line → **Add alert**: that alert follows the line when you drag it and is deleted with the line. The backend checks crypto every 30 s and stocks/FX every 60 s, using the 1m high/low since the last check, so a wick that touches the level counts. Every trigger shows a browser notification with a sound (allow notifications when the browser asks) and goes to the History tab.
+
+Phone notifications are optional. Fill in either channel in `backend/.env`, restart `npm run dev`, then run `npm run notify:test`:
+
+- **Telegram:** message [@BotFather](https://t.me/BotFather), `/newbot`, copy the token to `TELEGRAM_BOT_TOKEN`. Send any message to your new bot, open `https://api.telegram.org/bot<token>/getUpdates` and copy `message.chat.id` to `TELEGRAM_CHAT_ID`.
+- **LINE (Messaging API, not LINE Notify, which has shut down):** create a Messaging API channel in the [LINE Developers console](https://developers.line.biz/console/). Copy the long-lived channel access token (Messaging API tab) to `LINE_CHANNEL_TOKEN` and "Your user ID" (Basic settings tab) to `LINE_USER_ID`. Add the bot as a friend with its QR code. The free plan has a monthly message quota.
 
 ## Run
 
@@ -27,6 +38,7 @@ The backend binds to `127.0.0.1` only.
 |---|---|---|
 | `npm run check` | ruff + pytest (backend), typecheck + eslint + prettier + vitest (frontend) | none |
 | `npm run smoke` | T1.9 + T2.8: every interval on Binance, SET/US/FX history, quotes, search through the API (start `npm run dev:api` first; `CATPIVEX_API` env to use another port) | Binance, Yahoo |
+| `npm run notify:test` | T5.7 + T5.8: sends one test message through each channel set in `backend/.env` ("not configured" otherwise) | Telegram, LINE |
 | `npm run e2e` | Playwright in Edge. Starts its own servers on ports 8100/5180 with `backend/e2e.db`, so it never touches your dev session or watchlist | Binance, Yahoo |
 
 Test IDs (T1.1, T1.2, …) in test names match the test list in the project tracker.
@@ -79,3 +91,8 @@ Test IDs (T1.1, T1.2, …) in test names match the test list in the project trac
 - Drawings are anchored by (time, price) and saved per symbol. They stay at the same time and price when you change timeframe, even at a time with no bar (for example 13:30 drawn on 1h and shown on 1D).
 - The layout is saved and comes back after a reload: symbol, timeframe, indicators with their settings, volume and magnet. It is saved 0.5 s after the last change.
 - e2e tests reset the saved layout before each test (`e2e/fixtures.ts`).
+
+### Phase 5: price alerts ✅ (2026-11-25)
+- Backend: `alerts` + `alert_events` tables, `/api/alerts` CRUD, `/api/alerts/events?after=<id>`, APScheduler checks (30 s crypto / 60 s others), Telegram + LINE Messaging API notifiers (tokens never appear in errors or logs), alerts linked to a horizontal line follow it on every drawings save.
+- Frontend: Alerts panel (list, create/edit, enable toggle, history with per-channel delivery status), right-click a horizontal line → Add/Edit/Remove alert, bell mark on lines with an alert, browser notification + sound, in-app toast when notifications are blocked.
+- e2e uses an in-memory `TEST` exchange (`CATPIVEX_TEST_FEED=1`, `PUT /api/test/price`) and never sends real Telegram/LINE messages.

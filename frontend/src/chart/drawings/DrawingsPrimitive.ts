@@ -60,6 +60,8 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
   private preview: Drawing | null = null;
   /** Where the next click would place a point (tool active, nothing clicked yet). */
   private ghost: { anchor: Anchor; color: string } | null = null;
+  /** hlines with an enabled price alert (bell mark). */
+  private alertLines: ReadonlySet<string> = new Set();
   private projected: Projected[] = [];
   private readonly views: IPrimitivePaneView[];
   private priceLabels: AxisLabel[] = [];
@@ -100,6 +102,14 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     this.preview = s.preview;
     this.hoveredId = s.hoveredId;
     this.ghost = s.ghost;
+    this.requestUpdate?.();
+  }
+
+  setAlertLines(ids: ReadonlySet<string>): void {
+    const same =
+      ids.size === this.alertLines.size && [...ids].every((id) => this.alertLines.has(id));
+    if (same) return;
+    this.alertLines = ids;
     this.requestUpdate?.();
   }
 
@@ -174,8 +184,10 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     ghost: Anchor | null;
     priceLabels: string[];
     timeLabels: string[];
+    alertLines: string[];
   } {
     return {
+      alertLines: [...this.alertLines],
       hoveredId: this.hoveredId,
       ghost: this.ghost?.anchor ?? null,
       priceLabels: this.priceLabels.map((l) => l.text),
@@ -295,6 +307,7 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     const hoveredId = this.hoveredId;
     const ghost = this.ghostPoint();
     const ghostColor = this.ghost?.color ?? '#2962ff';
+    const alertLines = this.alertLines;
     const format = (p: number) => this.series?.priceFormatter().format(p) ?? String(p);
     return {
       draw: (target) => {
@@ -372,6 +385,9 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
               if (shape.type === 'hline') line(ctx, 0, shape.y, mediaSize.width, shape.y);
               if (shape.type === 'vline') line(ctx, shape.x, 0, shape.x, mediaSize.height);
             }
+            if (shape.type === 'hline' && alertLines.has(d.id)) {
+              bell(ctx, mediaSize.width - BELL_INSET, shape.y - 9, d.color);
+            }
             ctx.restore();
           }
           if (ghost) {
@@ -387,6 +403,26 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
       },
     };
   }
+}
+
+const BELL_INSET = 14;
+
+function bell(ctx: CanvasRenderingContext2D, cx: number, cy: number, color: string) {
+  ctx.beginPath();
+  ctx.moveTo(cx - 5.5, cy + 4);
+  ctx.lineTo(cx + 5.5, cy + 4);
+  ctx.lineTo(cx + 4, cy + 2);
+  ctx.lineTo(cx + 4, cy - 1);
+  ctx.arc(cx, cy - 1, 4, 0, Math.PI, true);
+  ctx.lineTo(cx - 4, cy + 2);
+  ctx.closePath();
+  ctx.moveTo(cx + 1.5, cy + 5.5);
+  ctx.arc(cx, cy + 5.5, 1.5, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.strokeStyle = '#131722';
+  ctx.lineWidth = 1;
+  ctx.fill();
+  ctx.stroke();
 }
 
 function line(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number) {

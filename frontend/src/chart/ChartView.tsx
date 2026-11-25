@@ -4,6 +4,7 @@ import { fetchCandles } from '../api/client';
 import { INTERVAL_SECONDS, type Candle, type CandlesResponse, type Interval } from '../api/types';
 import { connectKlineStream, klineStreamUrl } from '../realtime/binanceWs';
 import { startLatestBarsPolling, startPolling } from '../realtime/poll';
+import { alertLineIds, useAlertStore } from '../store/alertStore';
 import { useChartStore } from '../store/chartStore';
 import { useDrawingStore } from '../store/drawingStore';
 import { useIndicatorStore } from '../store/indicatorStore';
@@ -12,6 +13,7 @@ import { DrawingController } from './drawings/controller';
 import { DrawingsPrimitive } from './drawings/DrawingsPrimitive';
 import { buildLegend } from './indicatorData';
 import { IndicatorLayer } from './indicatorSeries';
+import { setLastPriceSource } from './lastPrice';
 import { Legend, createLegendFeed } from './Legend';
 import {
   applyRealtimeBar,
@@ -116,6 +118,25 @@ export function ChartView() {
     handles.chart.subscribeCrosshairMove(onCrosshair);
     refreshLegendRef.current = refreshLegend;
 
+    const syncAlertLines = () =>
+      drawings.setAlertLines(
+        alertLineIds(useAlertStore.getState().alerts, useDrawingStore.getState().symbol),
+      );
+    const unsubAlerts = [
+      useAlertStore.subscribe((s, prev) => {
+        if (s.alerts !== prev.alerts) syncAlertLines();
+      }),
+      useDrawingStore.subscribe((s, prev) => {
+        if (s.symbol !== prev.symbol) syncAlertLines();
+      }),
+    ];
+    syncAlertLines();
+    setLastPriceSource(() => {
+      const live = liveRef.current;
+      const last = live?.bars.at(-1);
+      return live && last ? { symbol: live.symbol, price: last.close } : null;
+    });
+
     if (import.meta.env.DEV) {
       window.__catpivex = {
         state() {
@@ -151,11 +172,17 @@ export function ChartView() {
         },
         timeToX: (time) => drawings.timeToX(time),
         priceToY: (price) => handles.candles.priceToCoordinate(price),
+        alerts: () => {
+          const s = useAlertStore.getState();
+          return { alerts: s.alerts, lastEventId: s.lastEventId };
+        },
       };
     }
 
     return () => {
       if (import.meta.env.DEV) delete window.__catpivex;
+      for (const u of unsubAlerts) u();
+      setLastPriceSource(null);
       handlesRef.current = null;
       layerRef.current = null;
       refreshLegendRef.current = () => {};

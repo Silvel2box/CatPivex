@@ -7,6 +7,7 @@ from fastapi import APIRouter, Request
 from app.adapters.registry import parse_symbol
 from app.errors import ApiError
 from app.models import DrawingsBody, DrawingsResponse, LayoutBody, LayoutResponse
+from app.routers.alerts import sync_linked_alerts
 
 router = APIRouter(prefix="/api")
 
@@ -34,6 +35,7 @@ def put_drawings(request: Request, symbol: str, body: DrawingsBody) -> DrawingsR
     symbol = _canonical(request, symbol)
     db = request.app.state.db
     _store(lambda: db.set_drawings(symbol, body.drawings))
+    sync_linked_alerts(db, symbol, body.drawings)
     return DrawingsResponse(symbol=symbol, drawings=db.get_drawings(symbol))
 
 
@@ -42,6 +44,7 @@ def delete_drawings(request: Request, symbol: str) -> DrawingsResponse:
     # Format check only, so drawings of an exchange that is no longer configured can be cleared.
     symbol = ":".join(parse_symbol(symbol))
     request.app.state.db.delete_drawings(symbol)
+    request.app.state.db.delete_linked_alerts(symbol)
     return DrawingsResponse(symbol=symbol, drawings=[])
 
 

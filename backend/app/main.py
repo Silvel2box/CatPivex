@@ -3,6 +3,7 @@
 import logging
 import time
 from collections.abc import Callable
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -12,12 +13,15 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.adapters.binance import BinanceAdapter
 from app.adapters.registry import Registry
+from app.adapters.test_feed import MemoryFeedAdapter
 from app.adapters.yahoo import YahooAdapter, YahooSource
 from app.config import Settings, load_settings
 from app.db import Database
 from app.errors import ApiError
 from app.models import ErrorCode
-from app.routers import drawings, market, watchlist
+from app.notifiers import build_notifiers
+from app.routers import alerts, drawings, market, test_feed, watchlist
+from app.services.alert_checks import AlertChecker, start_scheduler
 from app.services.candles import CandleService
 
 log = logging.getLogger(__name__)
@@ -53,13 +57,36 @@ def create_app(
     settings = settings or load_settings()
     registry = registry or default_registry()
 
-    app = FastAPI(title="CatPivex API")
+    if settings.test_feed:
+        registry.adapters["TEST"] = MemoryFeedAdapter()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        scheduler = start_scheduler(app.state.alert_checker) if settings.alerts_enabled else None
+        app.state.scheduler = scheduler
+        yield
+        if scheduler:
+            scheduler.shutdown(wait=False)
+
+    app = FastAPI(title="CatPivex API", lifespan=lifespan)
     app.state.registry = registry
+    app.state.clock = clock
     app.state.db = Database(settings.db_path)
     app.state.candle_service = CandleService(app.state.db, registry, clock)
+    app.state.alert_checker = AlertChecker(
+        app.state.db,
+        app.state.candle_service,
+        build_notifiers(settings),
+        settings.alert_interval_s,
+        clock,
+    )
     app.include_router(market.router)
     app.include_router(watchlist.router)
     app.include_router(drawings.router)
+    app.include_router(alerts.router)
+    if settings.test_feed:
+        app.state.test_feed = registry.adapters["TEST"]
+        app.include_router(test_feed.router)
 
     @app.exception_handler(ApiError)
     async def api_error_handler(_: Request, exc: ApiError) -> JSONResponse:

@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { ChartView } from './chart/ChartView';
+import { AlertToasts } from './components/AlertToasts';
 import { DrawingContextMenu } from './components/DrawingContextMenu';
 import { DrawingToolbar } from './components/DrawingToolbar';
 import { TopBar } from './components/TopBar';
 import { Watchlist } from './components/Watchlist';
 import { restoreLayout, startPersistence } from './persist/sync';
+import { notifyAlertEvent } from './realtime/alertNotify';
+import { startAlertPolling, useAlertStore } from './store/alertStore';
 
 export function App() {
   // The saved layout (symbol, timeframe, indicators) is applied before the chart mounts, so the
@@ -18,6 +21,10 @@ export function App() {
     return () => abort.abort();
   }, []);
   useEffect(() => (ready ? startPersistence() : undefined), [ready]);
+  useEffect(() => {
+    void useAlertStore.getState().load();
+    return startAlertPolling(notifyAlertEvent);
+  }, []);
 
   return (
     <div className="flex h-screen flex-col bg-[#131722]">
@@ -28,6 +35,7 @@ export function App() {
         <Watchlist />
       </div>
       <DrawingContextMenu />
+      <AlertToasts />
     </div>
   );
 }

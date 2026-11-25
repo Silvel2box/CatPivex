@@ -1,10 +1,12 @@
 import { fetchDrawings, fetchLayout, saveDrawings, saveLayout } from '../api/persist';
 import { sanitizeDrawings } from '../chart/drawings/geometry';
 import type { Drawing } from '../chart/drawings/types';
+import { useAlertStore } from '../store/alertStore';
 import { useChartStore } from '../store/chartStore';
 import { useDrawingStore } from '../store/drawingStore';
 import { useIndicatorStore } from '../store/indicatorStore';
 import { sanitizeLayout, type Layout } from './layout';
+import { setDrawingFlusher } from './drawingFlush';
 import { createDebouncedSaver } from './saver';
 
 /** Saved layout -> stores. A missing or unreadable layout leaves the defaults. */
@@ -45,7 +47,9 @@ export function startPersistence(): () => void {
   });
   const drawingSaver = createDebouncedSaver<Drawing[]>(async (symbol, drawings) => {
     await saveDrawings(symbol, drawings);
+    useAlertStore.getState().reloadIfLinked(symbol);
   });
+  setDrawingFlusher(() => drawingSaver.flush());
 
   let lastLayout = JSON.stringify(currentLayout());
   const onLayoutMaybeChanged = () => {
@@ -97,5 +101,6 @@ export function startPersistence(): () => void {
     window.removeEventListener('pagehide', onHide);
     abort?.abort();
     onHide();
+    setDrawingFlusher(null);
   };
 }

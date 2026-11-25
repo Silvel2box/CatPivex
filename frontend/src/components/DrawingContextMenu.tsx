@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { requestAlertPermission } from '../realtime/alertNotify';
+import { alertForLine, useAlertStore } from '../store/alertStore';
 import { useDrawingStore } from '../store/drawingStore';
 
 const item =
@@ -8,6 +10,8 @@ const item =
 export function DrawingContextMenu() {
   const menu = useDrawingStore((s) => s.menu);
   const drawing = useDrawingStore((s) => s.drawings.find((d) => d.id === s.menu?.id) ?? null);
+  const symbol = useDrawingStore((s) => s.symbol);
+  const alerts = useAlertStore((s) => s.alerts);
   const { closeMenu, remove, reverse, setStyle } = useDrawingStore.getState();
   const ref = useRef<HTMLDivElement>(null);
 
@@ -24,6 +28,15 @@ export function DrawingContextMenu() {
   const run = (fn: () => void) => () => {
     fn();
     closeMenu();
+  };
+  const lineAlert =
+    drawing.type === 'hline' && symbol ? alertForLine(alerts, symbol, drawing.id) : null;
+  const addAlert = (lineSymbol: string, id: string, price: number) => {
+    requestAlertPermission();
+    const store = useAlertStore.getState();
+    void store.addForLine(lineSymbol, id, price).then((created) => {
+      if (!created) store.pushToast('Alert not created', useAlertStore.getState().error ?? '');
+    });
   };
 
   return (
@@ -57,6 +70,45 @@ export function DrawingContextMenu() {
             Extend lines right
             <span className="text-[#5b8cff]">{drawing.extend ? '✓' : ''}</span>
           </button>
+          <div className="my-1 h-px bg-[#2a2e39]" />
+        </>
+      )}
+      {drawing.type === 'hline' && symbol && (
+        <>
+          {lineAlert ? (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="menu-edit-alert"
+                className={item}
+                onClick={run(() =>
+                  useAlertStore.getState().openPanel('alerts', { mode: 'edit', id: lineAlert.id }),
+                )}
+              >
+                Edit alert
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="menu-remove-alert"
+                className={item}
+                onClick={run(() => void useAlertStore.getState().remove(lineAlert.id))}
+              >
+                Remove alert
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              role="menuitem"
+              data-testid="menu-add-alert"
+              className={item}
+              onClick={run(() => addAlert(symbol, drawing.id, drawing.price))}
+            >
+              Add alert
+            </button>
+          )}
           <div className="my-1 h-px bg-[#2a2e39]" />
         </>
       )}

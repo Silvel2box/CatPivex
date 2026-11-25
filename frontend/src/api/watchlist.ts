@@ -3,7 +3,7 @@ import type { ErrorResponse, Quote, Watchlist } from './types';
 
 /** JSON request with the project error format turned into ApiError. */
 export async function requestJson<T>(
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   options: {
     params?: Record<string, string>;
@@ -29,6 +29,7 @@ export async function requestJson<T>(
     const err = body?.error;
     throw new ApiError(res.status, err?.code ?? 'http_error', err?.message ?? `HTTP ${res.status}`);
   }
+  if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 

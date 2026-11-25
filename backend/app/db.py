@@ -5,8 +5,16 @@ import json
 import sqlite3
 from contextlib import closing
 from pathlib import Path
+from typing import Any, NamedTuple
 
-from app.models import DEFAULT_WATCHLIST, Candle, JsonObject
+from app.models import (
+    DEFAULT_WATCHLIST,
+    Alert,
+    AlertCreate,
+    AlertEvent,
+    Candle,
+    JsonObject,
+)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS candles (
@@ -83,6 +91,15 @@ CREATE TABLE IF NOT EXISTS alert_events (
 def _dumps(value: object) -> str:
     """Strict JSON: raises ValueError on NaN/Infinity, which would make the value unreadable."""
     return json.dumps(value, ensure_ascii=False, allow_nan=False)
+
+
+class AlertState(NamedTuple):
+    alert: Alert
+    base_time: int | None
+    base_high: float | None
+    base_low: float | None
+    base_close: float | None
+    armed: bool
 
 
 class Database:
@@ -230,3 +247,158 @@ class Database:
         data = _dumps(layout)
         with closing(self._connect()) as conn, conn:
             conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('layout', ?)", (data,))
+
+    # --- alerts -----------------------------------------------------------------------------
+
+    def create_alert(self, alert: AlertCreate, created_at: int, base: Candle | None) -> Alert:
+        with closing(self._connect()) as conn, conn:
+            cur = conn.execute(
+                "INSERT INTO alerts (symbol, condition, price, repeat, drawing_id, note,"
+                " created_at, base_time, base_high, base_low, base_close)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    alert.symbol,
+                    alert.condition,
+                    alert.price,
+                    int(alert.repeat),
+                    alert.drawing_id,
+                    alert.note,
+                    created_at,
+                    *_base_values(base),
+                ),
+            )
+            row = conn.execute(f"{_ALERT_SELECT} WHERE id = ?", (cur.lastrowid,)).fetchone()
+        return _alert(row)
+
+    def get_alert(self, alert_id: int) -> Alert | None:
+        with closing(self._connect()) as conn:
+            row = conn.execute(f"{_ALERT_SELECT} WHERE id = ?", (alert_id,)).fetchone()
+        return _alert(row) if row else None
+
+    def list_alerts(self, symbol: str | None = None, linked_only: bool = False) -> list[Alert]:
+        where, args = [], []
+        if symbol is not None:
+            where.append("symbol = ?")
+            args.append(symbol)
+        if linked_only:
+            where.append("drawing_id IS NOT NULL")
+        sql = _ALERT_SELECT + (f" WHERE {' AND '.join(where)}" if where else "") + " ORDER BY id"
+        with closing(self._connect()) as conn:
+            return [_alert(r) for r in conn.execute(sql, args).fetchall()]
+
+    def enabled_alert_symbols(self) -> list[str]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT symbol FROM alerts WHERE enabled = 1 ORDER BY symbol"
+            ).fetchall()
+        return [s for (s,) in rows]
+
+    def enabled_alert_states(self, symbol: str) -> list[AlertState]:
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                f"SELECT {_ALERT_COLUMNS}, base_time, base_high, base_low, base_close, armed"
+                " FROM alerts WHERE symbol = ? AND enabled = 1 ORDER BY id",
+                (symbol,),
+            ).fetchall()
+        return [AlertState(_alert(r[:10]), *r[10:14], bool(r[14])) for r in rows]
+
+    def update_alert(
+        self,
+        alert_id: int,
+        fields: dict[str, Any],
+        rebase: bool = False,
+        base: Candle | None = None,
+    ) -> Alert | None:
+        """Sets the given API columns; `rebase` also resets the baseline to `base` and arms it."""
+        values = {k: int(v) if isinstance(v, bool) else v for k, v in fields.items()}
+        if rebase:
+            values.update(zip(_BASE_COLUMNS, _base_values(base), strict=True), armed=1)
+        with closing(self._connect()) as conn, conn:
+            if values:
+                sets = ", ".join(f"{k} = ?" for k in values)
+                conn.execute(f"UPDATE alerts SET {sets} WHERE id = ?", (*values.values(), alert_id))
+            row = conn.execute(f"{_ALERT_SELECT} WHERE id = ?", (alert_id,)).fetchone()
+        return _alert(row) if row else None
+
+    def delete_alert(self, alert_id: int) -> bool:
+        with closing(self._connect()) as conn, conn:
+            return conn.execute("DELETE FROM alerts WHERE id = ?", (alert_id,)).rowcount > 0
+
+    def delete_linked_alerts(self, symbol: str) -> None:
+        with closing(self._connect()) as conn, conn:
+            conn.execute(
+                "DELETE FROM alerts WHERE symbol = ? AND drawing_id IS NOT NULL", (symbol,)
+            )
+
+    def save_check(self, alert_id: int, base: Candle, armed: bool) -> bool:
+        """Writes the evaluation state only; False if the alert is gone."""
+        with closing(self._connect()) as conn, conn:
+            return _save_state(conn, alert_id, base, armed, {}) > 0
+
+    def save_trigger(
+        self, alert_id: int, base: Candle, armed: bool, disable: bool, event: dict[str, Any]
+    ) -> AlertEvent | None:
+        """State + last_triggered_at (+ enabled = 0) and the event, atomically; None if gone."""
+        extra: dict[str, Any] = {"last_triggered_at": event["time"]}
+        if disable:
+            extra["enabled"] = 0
+        with closing(self._connect()) as conn, conn:
+            if not _save_state(conn, alert_id, base, armed, extra):
+                return None
+            cur = conn.execute(
+                "INSERT INTO alert_events"
+                " (alert_id, symbol, condition, level, price, time, message, deliveries)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    alert_id,
+                    event["symbol"],
+                    event["condition"],
+                    event["level"],
+                    event["price"],
+                    event["time"],
+                    event["message"],
+                    _dumps(event["deliveries"]),
+                ),
+            )
+        return AlertEvent(id=cur.lastrowid, alert_id=alert_id, **event)
+
+    def list_alert_events(self, after: int = 0, limit: int = 50) -> list[AlertEvent]:
+        """Events with id > after, newest first."""
+        with closing(self._connect()) as conn:
+            rows = conn.execute(
+                "SELECT id, alert_id, symbol, condition, level, price, time, message, deliveries"
+                " FROM alert_events WHERE id > ? ORDER BY id DESC LIMIT ?",
+                (after, limit),
+            ).fetchall()
+        keys = ("id", "alert_id", "symbol", "condition", "level", "price", "time", "message")
+        return [
+            AlertEvent(**dict(zip(keys, r[:8], strict=True)), deliveries=json.loads(r[8]))
+            for r in rows
+        ]
+
+
+_ALERT_COLUMNS = (
+    "id, symbol, condition, price, repeat, enabled, drawing_id, note, created_at, last_triggered_at"
+)
+_ALERT_SELECT = f"SELECT {_ALERT_COLUMNS} FROM alerts"
+_BASE_COLUMNS = ("base_time", "base_high", "base_low", "base_close")
+
+
+def _alert(row: tuple) -> Alert:
+    keys = [k.strip() for k in _ALERT_COLUMNS.split(",")]
+    return Alert(**dict(zip(keys, row, strict=True)))
+
+
+def _base_values(base: Candle | None) -> tuple:
+    return (base.time, base.high, base.low, base.close) if base else (None, None, None, None)
+
+
+def _save_state(
+    conn: sqlite3.Connection, alert_id: int, base: Candle, armed: bool, extra: dict[str, Any]
+) -> int:
+    values = {**dict(zip(_BASE_COLUMNS, _base_values(base), strict=True)), "armed": int(armed)}
+    values.update(extra)
+    sets = ", ".join(f"{k} = ?" for k in values)
+    return conn.execute(
+        f"UPDATE alerts SET {sets} WHERE id = ?", (*values.values(), alert_id)
+    ).rowcount

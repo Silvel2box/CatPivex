@@ -35,29 +35,14 @@ Chart layout (one opaque JSON object):
   GET /api/layout                  -> LayoutResponse, layout null until the first save
   PUT /api/layout                  body {"layout": {...}} ({} is allowed) -> stored layout
 
-Price alerts (Phase 5; evaluation rules in app/services/alerts.py):
-  GET    /api/alerts                  -> list[Alert], ascending id
-  POST   /api/alerts                  body AlertCreate -> Alert (201)
-  PATCH  /api/alerts/{id}             body AlertUpdate (only the fields to change) -> Alert
-  DELETE /api/alerts/{id}             -> 204 (404 not_found if absent)
-  GET    /api/alerts/events?after=<event id>&limit=50   (limit 1..500)
-                                      -> list[AlertEvent], newest first, only id > after.
-    The frontend polls this for browser notifications (it remembers the newest id it has seen)
-    and shows it as the history. Events stay when their alert is deleted.
-  Linked alerts (drawing_id set) follow a horizontal line of the same symbol:
-    - POST with drawing_id: 422 validation_error unless that symbol's saved drawings hold an
-      'hline' with that id; `price` is then taken from the line (the body's value is ignored).
-      The frontend flushes pending drawing saves before posting.
-    - PUT /api/drawings/{symbol} syncs them: line moved -> alert price = line price; line gone
-      -> alert deleted. DELETE /api/drawings/{symbol} deletes them all.
-    - PATCH of `price` on a linked alert: 422 validation_error (move the line instead).
-  Checks run in the backend (APScheduler, started with the app when settings.alerts_enabled).
+Price alerts (rules: project task list, Phase 5):
+  GET /api/alerts -> list[Alert] · POST /api/alerts AlertCreate -> Alert 201
+  PATCH /api/alerts/{id} AlertUpdate -> Alert · DELETE /api/alerts/{id} -> 204 (404 not_found)
+  GET /api/alerts/events?after=<event id>&limit=50 (1..500) -> list[AlertEvent], newest first
+  drawing_id = an 'hline' of the symbol: price follows it, deleted with it; PATCH price -> 422.
 
-Test feed (only when CATPIVEX_TEST_FEED=1, for e2e; never in normal runs):
-  Exchange TEST (realtime, no search results): any ticker, 1m candles only, kept in memory.
-  PUT /api/test/price  body {"symbol": "TEST:FOO", "price": 100.0} -> 204
-    Updates the 1m bar of the current minute (first price of a minute opens o=h=l=c, later ones
-    move h/l/c), so alerts on TEST:* see a price crossing within one check interval.
+Test feed (CATPIVEX_TEST_FEED=1 only): exchange TEST (1m, in memory) +
+  PUT /api/test/price {"symbol": "TEST:FOO", "price": 100.0} -> 204 (moves the current 1m bar).
 
 Every error response (any status >= 400) has the body ErrorResponse.
 """

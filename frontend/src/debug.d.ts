@@ -1,4 +1,4 @@
-import type { Candle, Interval } from './api/types';
+import type { Alert, Candle, Interval } from './api/types';
 import type { Drawing, DrawingType, PixelShape } from './chart/drawings/types';
 
 export interface CatpivexDebugState {
@@ -57,11 +57,15 @@ export interface CatpivexDebug {
     /** Axis labels: every hline's price, plus the anchors of the selected/being-drawn drawing. */
     priceLabels: string[];
     timeLabels: string[];
+    /** hline ids drawn with the alert bell. */
+    alertLines: string[];
   };
   /** x for any time (interpolated between bars), pane px; null without data. */
   timeToX(time: number): number | null;
   /** y of a price on the candle pane, pane px. */
   priceToY(price: number): number | null;
+  /** Alert store: alerts and the newest event id seen (null before the first events poll). */
+  alerts(): { alerts: Alert[]; lastEventId: number | null };
 }
 
 declare global {
