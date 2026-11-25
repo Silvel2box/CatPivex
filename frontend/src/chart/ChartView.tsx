@@ -155,6 +155,7 @@ export function ChartView() {
           };
         },
         indicators: () => layer.debug(),
+        indicatorSeries: (id, line) => layer.seriesData(id, line),
         xForTime: (time) => handles.chart.timeScale().timeToCoordinate(time as UTCTimestamp),
         paneCount: () => handles.chart.panes().length,
         drawings: () => {

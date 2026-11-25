@@ -9,13 +9,23 @@ import {
 } from 'lightweight-charts';
 import type { Candle, Interval } from '../api/types';
 import { DEFAULT_LINE_WIDTH, type IndicatorInstance } from '../store/indicatorStore';
-import { activeInstances, toSeriesData, toSeriesPoint, type LegendSource } from './indicatorData';
+import {
+  GAP_COLOR,
+  activeInstances,
+  indexAt,
+  toSeriesData,
+  toSeriesPoint,
+  withGaps,
+  type LegendSource,
+  type SeriesItem,
+} from './indicatorData';
 import {
   INDICATORS,
   dayKeyFor,
   runIndicator,
   type IndicatorDef,
   type IndicatorRun,
+  type LineDef,
   type LinePoint,
 } from './indicators';
 
@@ -38,8 +48,8 @@ export interface IndicatorDebug {
   lines: Record<string, { count: number; last: LinePoint | null; width?: number }>;
 }
 
-const asData = (points: { time: number; value: number; color?: string }[]) =>
-  points as { time: UTCTimestamp; value: number; color?: string }[];
+const asData = (points: SeriesItem[]) =>
+  points as ({ time: UTCTimestamp; value: number; color?: string } | { time: UTCTimestamp })[];
 
 /**
  * Owns the Lightweight Charts series (and sub-panes) of the indicator instances.
@@ -83,16 +93,19 @@ export class IndicatorLayer {
       if (!e.run) continue;
       try {
         const res = e.run.update(bar);
-        if (!res?.values) continue;
+        if (!res) continue;
         for (const line of e.def.lines) {
-          const v = res.values[line.key];
-          if (v === undefined) continue;
-          const point = toSeriesPoint(
-            line.kind,
-            { time: res.time, value: v },
-            this.color(e, line.key),
-          );
-          e.series[line.key].update(asData([point])[0]);
+          const v = res.values?.[line.key];
+          if (line.gaps) {
+            this.updateGaps(e, line, res.time, v);
+          } else if (v !== undefined) {
+            const point = toSeriesPoint(
+              line.kind,
+              { time: res.time, value: v },
+              this.color(e, line.key),
+            );
+            e.series[line.key].update(asData([point])[0]);
+          }
         }
       } catch (err) {
         this.fail(e, err);
@@ -128,6 +141,18 @@ export class IndicatorLayer {
         }),
       ),
     }));
+  }
+
+  /** `chart`: the series' data as the chart holds it (it drops whitespace); `items`: what is fed. */
+  seriesData(id: string, key: string): { chart: SeriesItem[]; items: SeriesItem[] } {
+    const e = this.entries.get(id);
+    const line = e?.def.lines.find((l) => l.key === key);
+    if (!e || !line) return { chart: [], items: [] };
+    const plain = ({ time, value, color }: { time: unknown; value?: number; color?: string }) =>
+      value === undefined
+        ? { time: time as number }
+        : { time: time as number, value, ...(color === undefined ? {} : { color }) };
+    return { chart: e.series[key].data().map(plain), items: this.data(e, line).map(plain) };
   }
 
   private ordered(): Entry[] {
@@ -225,10 +250,33 @@ export class IndicatorLayer {
   }
 
   private setAll(e: Entry): void {
-    for (const line of e.def.lines) {
-      const points = e.run?.lines[line.key] ?? [];
-      e.series[line.key].setData(asData(toSeriesData(line.kind, points, this.color(e, line.key))));
+    for (const line of e.def.lines) e.series[line.key].setData(this.data(e, line));
+  }
+
+  /** Realtime counterpart of withGaps: whitespace or the value at `time`, and the break colour. */
+  private updateGaps(e: Entry, line: LineDef, time: number, v: number | undefined): void {
+    // The run keeps a started line's array, also when an update has just emptied it.
+    const pts = e.run?.lines[line.key];
+    if (!pts) return;
+    const s = e.series[line.key];
+    if (line.kind === 'line') {
+      const last = pts[pts.length - 1];
+      const prev = last?.time === time ? pts[pts.length - 2] : last;
+      if (prev) {
+        const i = indexAt(this.bars, time);
+        const joined = v !== undefined && i > 0 && this.bars[i - 1].time === prev.time;
+        s.update(asData([joined ? prev : { ...prev, color: GAP_COLOR }])[0], true);
+      }
     }
+    const color = this.color(e, line.key);
+    const item = v === undefined ? { time } : toSeriesPoint(line.kind, { time, value: v }, color);
+    s.update(asData([item])[0]);
+  }
+
+  private data(e: Entry, line: LineDef): ReturnType<typeof asData> {
+    const points = toSeriesData(line.kind, e.run?.lines[line.key] ?? [], this.color(e, line.key));
+    const times = line.gaps ? this.bars.map((b) => b.time) : null;
+    return asData(times ? withGaps(line.kind, points, times) : points);
   }
 
   private applyStyle(e: Entry): void {
@@ -236,8 +284,7 @@ export class IndicatorLayer {
       const color = this.color(e, line.key);
       if (line.kind === 'histogram') {
         // Bar colours live in the data.
-        const points = e.run?.lines[line.key] ?? [];
-        e.series[line.key].setData(asData(toSeriesData(line.kind, points, color)));
+        e.series[line.key].setData(this.data(e, line));
       } else {
         e.series[line.key].applyOptions({ color, lineWidth: this.width(e, line.key) });
       }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Candle } from '../api/types';
 import type { IndicatorInstance } from '../store/indicatorStore';
 import {
+  GAP_COLOR,
   HIST_DOWN,
   activeInstances,
   buildLegend,
@@ -11,6 +12,7 @@ import {
   indexAt,
   instanceLabel,
   toSeriesData,
+  withGaps,
 } from './indicatorData';
 import type { IndicatorCalc, IndicatorDef, Params } from './indicators/types';
 
@@ -88,6 +90,31 @@ describe('T3.7 indicator helpers', () => {
       { time: 2, value: -1, color: HIST_DOWN },
     ]);
     expect(toSeriesData('line', pts, '#0f0')).toEqual(pts);
+  });
+
+  it('withGaps: whitespace from the first point on; break colour only on lines', () => {
+    const pts = [
+      { time: 2, value: 5 },
+      { time: 3, value: 6 },
+      { time: 6, value: 7 },
+    ];
+    const times = [1, 2, 3, 4, 5, 6, 7];
+    expect(withGaps('line', pts, times)).toEqual([
+      { time: 2, value: 5 },
+      { time: 3, value: 6, color: GAP_COLOR },
+      { time: 4 },
+      { time: 5 },
+      { time: 6, value: 7, color: GAP_COLOR },
+      { time: 7 },
+    ]);
+    expect(withGaps('histogram', pts, times)).toEqual([
+      ...pts.slice(0, 2),
+      { time: 4 },
+      { time: 5 },
+      pts[2],
+      { time: 7 },
+    ]);
+    expect(withGaps('line', [], times)).toEqual([]);
   });
 
   it('indexAt finds exact times by binary search', () => {

@@ -37,6 +37,18 @@ export interface CatpivexDebug {
   state(): CatpivexDebugState;
   /** Rendered indicator instances (visible, not hidden by intradayOnly), in store order. */
   indicators(): CatpivexDebugIndicator[];
+  /**
+   * One indicator line: `chart` = its series data read back from the chart (Lightweight Charts
+   * leaves whitespace out), `items` = the data the layer feeds it, whitespace items without value.
+   * A point before a gap carries color 'transparent' (the chart would join across whitespace).
+   */
+  indicatorSeries(
+    id: string,
+    line: string,
+  ): {
+    chart: { time: number; value?: number; color?: string }[];
+    items: { time: number; value?: number; color?: string }[];
+  };
   /** x of a bar time relative to the chart container, null when off-screen / unknown. */
   xForTime(time: number): number | null;
   /** Chart panes: 1 (candles + main-pane indicators) + one per sub-pane indicator. */

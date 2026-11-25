@@ -178,7 +178,46 @@ def cases(df: pd.DataFrame, tz: str) -> list[dict]:
     for f, s, g in ((12, 26, 9), (5, 35, 5)):
         add("macd", {"fast": f, "slow": s, "signal": g}, "talib.EMA (MACD built per FORMULAS.md)", ema_macd(c, f, s, g))
     add("vwap", {}, f"pandas groupby(date in {tz}).cumsum", vwap_pandas(df, tz))
+
+    # ---- Phase 7 (P7.B): ATR, Supertrend ----
+    h = df["high"].to_numpy(dtype=float)
+    lo = df["low"].to_numpy(dtype=float)
+    for p in (14, 7):
+        add("atr", {"period": p}, "talib.ATR", {"value": talib.ATR(h, lo, c, timeperiod=p)})
+    for p, f in ((10, 3), (7, 2)):
+        st = supertrend_loop(h, lo, c, p, f)
+        for k in ("up", "down"):
+            idx = np.where(~np.isnan(st[k]))[0]
+            assert len(idx) > 0 and np.any(np.diff(idx) > 1), f"supertrend {k}: no flip"
+        add("supertrend", {"atrPeriod": p, "factor": f}, "numpy loop (Pine rule) over talib.ATR", st)
     return out
+
+
+def supertrend_loop(h, lo, c, period, factor):
+    """Pine ta.supertrend as written in FORMULAS.md, over talib.ATR."""
+    atr = talib.ATR(h, lo, c, timeperiod=period)
+    src = (h + lo) / 2
+    up = np.full_like(c, np.nan)
+    down = np.full_like(c, np.nan)
+    p_upper = p_lower = 0.0
+    p_st = None
+    for i in range(len(c)):
+        if np.isnan(atr[i]):
+            continue
+        upper = src[i] + factor * atr[i]
+        lower = src[i] - factor * atr[i]
+        lower = lower if lower > p_lower or c[i - 1] < p_lower else p_lower
+        upper = upper if upper < p_upper or c[i - 1] > p_upper else p_upper
+        if p_st is None:
+            d = 1
+        elif p_st == p_upper:
+            d = -1 if c[i] > upper else 1
+        else:
+            d = 1 if c[i] < lower else -1
+        st = lower if d == -1 else upper
+        (up if d == -1 else down)[i] = st
+        p_upper, p_lower, p_st = upper, lower, st
+    return {"up": up, "down": down}
 
 
 def main() -> None:
