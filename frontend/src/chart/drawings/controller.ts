@@ -60,6 +60,7 @@ export class DrawingController {
   private hoveredId: string | null = null;
   /** Where a click would place a point while a tool is active (null otherwise). */
   private ghost: Anchor | null = null;
+  private measure: { a: Anchor; b: Anchor; downAt: Point; done: boolean } | null = null;
   private readonly cleanup: (() => void)[] = [];
   private readonly container: HTMLElement;
   private readonly chart: IChartApi;
@@ -94,13 +95,16 @@ export class DrawingController {
 
     let prevTool = useDrawingStore.getState().tool;
     this.cleanup.push(
-      useDrawingStore.subscribe((s) => {
+      useDrawingStore.subscribe((s, prev) => {
         if (s.tool !== prevTool) {
           prevTool = s.tool;
           this.pending = null;
           this.preview = null;
           this.ghost = null;
+          this.measure = null;
         }
+        if (s.symbol !== prev.symbol || (s.measuring && !prev.measuring)) this.measure = null;
+        if (!s.measuring && prev.measuring && !this.measure?.done) this.measure = null;
         this.render();
       }),
     );
@@ -120,6 +124,7 @@ export class DrawingController {
       hoveredId: this.hoveredId,
       // One readable accent for the aiming dot and its axis labels (fib's own colour is grey).
       ghost: this.ghost && s.tool ? { anchor: this.ghost, color: GHOST_COLOR } : null,
+      measure: this.measure && { a: this.measure.a, b: this.measure.b },
     });
   }
 
@@ -156,10 +161,20 @@ export class DrawingController {
   }
 
   private onDown(e: MouseEvent): void {
-    if (e.button !== 0) return;
     const p = this.local(e);
     if (!p) return;
+    if (this.measure?.done) {
+      this.measure = null;
+      this.render();
+    }
+    if (e.button !== 0) return;
     const store = useDrawingStore.getState();
+    if (this.measure || store.measuring) {
+      e.stopPropagation();
+      e.preventDefault();
+      this.measureAt(p);
+      return;
+    }
 
     if (store.tool) {
       e.stopPropagation();
@@ -185,7 +200,11 @@ export class DrawingController {
     const hit = hitTestAll(this.primitive.shapes(), p.x, p.y, HIT_TOLERANCE, HANDLE_TOLERANCE);
     if (!hit) {
       if (store.selectedId) store.select(null);
-      return; // the chart pans as usual
+      if (!e.shiftKey) return; // the chart pans as usual
+      e.stopPropagation();
+      e.preventDefault();
+      this.measureAt(p);
+      return;
     }
     e.stopPropagation();
     e.preventDefault();
@@ -195,7 +214,38 @@ export class DrawingController {
     if (orig && start) this.drag = { orig, part: hit.part, start, moved: false };
   }
 
+  /** Ruler: the first press sets the start, the next one (or a drag release) the end. */
+  private measureAt(p: Point): void {
+    const a = this.anchorAt(p, true);
+    if (!a) return;
+    if (this.measure) this.finishMeasure(a);
+    else this.measure = { a, b: a, downAt: p, done: false };
+    this.render();
+  }
+
+  private finishMeasure(b: Anchor): void {
+    this.measure = { ...this.measure!, b, done: true };
+    const store = useDrawingStore.getState();
+    if (store.measuring) store.setMeasuring(false);
+    else this.render();
+  }
+
+  private cancelMeasure(): void {
+    this.measure = null;
+    const store = useDrawingStore.getState();
+    if (store.measuring) store.setMeasuring(false);
+    else this.render();
+  }
+
   private onMove(e: MouseEvent): void {
+    if (this.measure && !this.measure.done) {
+      const r = this.container.getBoundingClientRect();
+      const b = this.anchorAt({ x: e.clientX - r.left, y: e.clientY - r.top }, true);
+      if (!b) return;
+      this.measure.b = b;
+      this.render();
+      return;
+    }
     if (!this.pending && !this.drag) {
       this.updateHover(e);
       return;
@@ -243,6 +293,11 @@ export class DrawingController {
   /** Right click on a drawing: its menu. While drawing: cancel. Elsewhere: the browser's menu. */
   private onContextMenu(e: MouseEvent): void {
     const store = useDrawingStore.getState();
+    if ((this.measure && !this.measure.done) || store.measuring) {
+      e.preventDefault();
+      this.cancelMeasure();
+      return;
+    }
     if (this.pending || store.tool) {
       e.preventDefault();
       store.setTool(null);
@@ -287,9 +342,16 @@ export class DrawingController {
   private onUp(e: MouseEvent): void {
     if (e.button !== 0) return;
     this.drag = null;
-    if (!this.pending) return;
     const r = this.container.getBoundingClientRect();
     const p = { x: e.clientX - r.left, y: e.clientY - r.top };
+    const m = this.measure;
+    if (m && !m.done) {
+      if (Math.hypot(p.x - m.downAt.x, p.y - m.downAt.y) <= DRAG_FINISH_PX) return;
+      const b = this.anchorAt(p, true);
+      if (b) this.finishMeasure(b);
+      return;
+    }
+    if (!this.pending) return;
     const { downAt } = this.pending;
     if (Math.hypot(p.x - downAt.x, p.y - downAt.y) <= DRAG_FINISH_PX) return; // click: wait for 2nd
     const b = this.endAnchor(e, p, this.pending.tool, this.pending.a);
@@ -325,6 +387,7 @@ export class DrawingController {
     if (e.altKey) return;
     if (e.key === 'Escape') {
       if (store.menu) store.closeMenu();
+      else if (this.measure || store.measuring) this.cancelMeasure();
       else if (this.pending || store.tool) store.setTool(null);
       else if (store.selectedId) store.select(null);
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && store.selectedId) {

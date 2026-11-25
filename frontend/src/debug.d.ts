@@ -48,6 +48,8 @@ export interface CatpivexDebug {
     tool: DrawingType | null;
     selectedId: string | null;
     magnet: boolean;
+    /** Ruler armed from the toolbar. */
+    measuring: boolean;
     drawings: Drawing[];
     shapes: { id: string; shape: PixelShape }[];
     /** Drawing under the mouse (handles shown). */
@@ -60,6 +62,12 @@ export interface CatpivexDebug {
     /** hline / ray ids drawn with the alert bell. */
     alertLines: string[];
   };
+  /** The ruler on screen (being placed or finished): anchors and its two label lines. */
+  measure(): {
+    a: { time: number; price: number };
+    b: { time: number; price: number };
+    lines: string[];
+  } | null;
   /** x for any time (interpolated between bars), pane px; null without data. */
   timeToX(time: number): number | null;
   /** y of a price on the candle pane, pane px. */

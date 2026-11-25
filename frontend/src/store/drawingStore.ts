@@ -14,6 +14,8 @@ interface DrawingState {
   /** Active drawing tool; null = cursor (select / drag). */
   tool: DrawingType | null;
   magnet: boolean;
+  /** Ruler armed from the toolbar (one-shot; not a drawing). */
+  measuring: boolean;
   /** Bumped by user edits only (not by loading), so persistence saves exactly those. */
   rev: number;
   /** Undo / redo snapshots of `drawings` for the current symbol (cleared on symbol switch). */
@@ -50,6 +52,8 @@ interface DrawingState {
   openMenu: (id: string, x: number, y: number) => void;
   closeMenu: () => void;
   setMagnet: (on: boolean) => void;
+  /** Arming the ruler drops the active tool; `setTool` disarms it. */
+  setMeasuring: (on: boolean) => void;
 }
 
 export const newDrawingId = () => `d-${Math.random().toString(36).slice(2, 10)}`;
@@ -71,6 +75,7 @@ export const useDrawingStore = create<DrawingState>()((set) => ({
   selectedId: null,
   tool: null,
   magnet: false,
+  measuring: false,
   rev: 0,
   past: [],
   future: [],
@@ -83,6 +88,7 @@ export const useDrawingStore = create<DrawingState>()((set) => ({
       drawings: [],
       selectedId: null,
       tool: null,
+      measuring: false,
       past: [],
       future: [],
       menu: null,
@@ -93,7 +99,7 @@ export const useDrawingStore = create<DrawingState>()((set) => ({
         ? { loading: false, drawings, selectedId: null, past: [], future: [] }
         : {},
     ),
-  setTool: (tool) => set({ tool, selectedId: null, menu: null }),
+  setTool: (tool) => set({ tool, measuring: false, selectedId: null, menu: null }),
   select: (selectedId) => set({ selectedId }),
   add: (d) =>
     set((s) => ({
@@ -165,4 +171,6 @@ export const useDrawingStore = create<DrawingState>()((set) => ({
   openMenu: (id, x, y) => set({ menu: { id, x, y }, selectedId: id }),
   closeMenu: () => set({ menu: null }),
   setMagnet: (magnet) => set({ magnet }),
+  setMeasuring: (measuring) =>
+    set(measuring ? { measuring, tool: null, selectedId: null, menu: null } : { measuring }),
 }));
