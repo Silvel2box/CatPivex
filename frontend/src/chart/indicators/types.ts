@@ -67,6 +67,7 @@ export interface LineDef {
   color: string;
   kind: 'line' | 'histogram';
   gaps?: boolean;
+  steps?: boolean;
 }
 
 export interface IndicatorDef {

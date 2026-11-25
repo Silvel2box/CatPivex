@@ -49,21 +49,35 @@ export const GAP_COLOR = 'transparent';
  * Lightweight Charts still joins a line across whitespace and colours a segment by its starting
  * point, so on a line the point before a gap gets GAP_COLOR.
  */
-export function withGaps(kind: LineDef['kind'], points: SeriesPoint[], times: number[]) {
+export function withGaps(
+  kind: LineDef['kind'],
+  points: SeriesPoint[],
+  times: number[],
+  steps = false,
+) {
   const out: SeriesItem[] = [];
   if (points.length === 0) return out;
+  const breakPrev = () => {
+    const prev = out[out.length - 1];
+    if (kind === 'line' && prev && 'value' in prev)
+      out[out.length - 1] = { ...prev, color: GAP_COLOR };
+  };
+  const push = (p: SeriesPoint) => {
+    const prev = out[out.length - 1];
+    if (steps && prev && 'value' in prev && prev.value !== p.value) breakPrev();
+    out.push(p);
+  };
   let j = 0;
   for (const t of times) {
-    while (j < points.length && points[j].time < t) out.push(points[j++]);
+    while (j < points.length && points[j].time < t) push(points[j++]);
     if (points[j]?.time === t) {
-      out.push(points[j++]);
+      push(points[j++]);
     } else if (t > points[0].time) {
-      const prev = out[out.length - 1];
-      if (kind === 'line' && 'value' in prev) out[out.length - 1] = { ...prev, color: GAP_COLOR };
+      breakPrev();
       out.push({ time: t });
     }
   }
-  while (j < points.length) out.push(points[j++]);
+  while (j < points.length) push(points[j++]);
   return out;
 }
 

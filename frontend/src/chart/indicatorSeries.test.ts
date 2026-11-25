@@ -6,7 +6,7 @@ import type { IndicatorInstance } from '../store/indicatorStore';
 import { GAP_COLOR, HIST_DOWN } from './indicatorData';
 import { IndicatorLayer } from './indicatorSeries';
 import { applyRealtimeBar } from './series';
-import { runIndicator } from './indicators';
+import { INDICATORS, runIndicator } from './indicators';
 import type {
   BarValues,
   CalcContext,
@@ -439,5 +439,35 @@ describe('T7.2 gaps lines (fake chart, real runner)', () => {
     const lines = layer.debug()[0].lines;
     expect(lines.up).toMatchObject({ count: 3, last: { time: 300, value: 5 } });
     expect(lines.down).toMatchObject({ count: 1, last: { time: 240, value: 2 } });
+  });
+});
+
+describe('steps lines realtime', () => {
+  it('a new value on the next bar breaks the line; the same value stays joined', () => {
+    const levelCalc: IndicatorCalc<Params, null> = {
+      init: () => null,
+      next: (state, c) => ({ state, out: { P: c.open } }),
+    };
+    const run = (_c: unknown, params: Params, ctx: CalcContext, bars: Candle[]) =>
+      runIndicator(levelCalc, params, ctx, bars);
+    const { chart, panes } = fakeChart();
+    const never = (() => new Promise(() => {})) as unknown as typeof fetchCandles;
+    const layer = new IndicatorLayer(chart, run, never);
+    const bars = [bar(60, 5, 5)];
+    layer.setSource('BINANCE:BTCUSDT', '1m', bars);
+    layer.setInstances([inst('p', 'pivot', { kind: 0, timeframe: 0 })]);
+    const p = panes[0].find((s) => s.opts.color === INDICATORS.pivot.lines[4].color)!;
+    const tick = (b: Candle) => {
+      applyRealtimeBar(bars, b);
+      layer.update(b);
+    };
+    tick(bar(120, 5, 6));
+    tick(bar(180, 7, 7));
+    expect(p.updates).toEqual([
+      { time: 60, value: 5, historical: true },
+      { time: 120, value: 5 },
+      { time: 120, value: 5, color: GAP_COLOR, historical: true },
+      { time: 180, value: 7 },
+    ]);
   });
 });

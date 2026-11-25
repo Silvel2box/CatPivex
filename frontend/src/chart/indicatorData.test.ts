@@ -249,3 +249,21 @@ describe('legend gap lines', () => {
     expect(legend.rows[1].values.map((v) => v.text)).toEqual(['—']);
   });
 });
+
+describe('withGaps steps', () => {
+  it('breaks where the value changes; equal neighbours stay joined', () => {
+    const pts = [
+      { time: 1, value: 5 },
+      { time: 2, value: 5 },
+      { time: 3, value: 7 },
+      { time: 4, value: 7 },
+    ];
+    expect(withGaps('line', pts, [1, 2, 3, 4], true)).toEqual([
+      { time: 1, value: 5 },
+      { time: 2, value: 5, color: GAP_COLOR },
+      { time: 3, value: 7 },
+      { time: 4, value: 7 },
+    ]);
+    expect(withGaps('line', pts, [1, 2, 3, 4])).toEqual(pts);
+  });
+});

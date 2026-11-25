@@ -285,7 +285,11 @@ export class IndicatorLayer {
       const prev = last?.time === time ? pts[pts.length - 2] : last;
       if (prev) {
         const i = indexAt(this.bars, time);
-        const joined = v !== undefined && i > 0 && this.bars[i - 1].time === prev.time;
+        const joined =
+          v !== undefined &&
+          i > 0 &&
+          this.bars[i - 1].time === prev.time &&
+          (!line.steps || prev.value === v);
         s.update(asData([joined ? prev : { ...prev, color: GAP_COLOR }])[0], true);
       }
     }
@@ -297,7 +301,7 @@ export class IndicatorLayer {
   private data(e: Entry, line: LineDef): ReturnType<typeof asData> {
     const points = toSeriesData(line.kind, e.run?.lines[line.key] ?? [], this.color(e, line.key));
     const times = line.gaps ? this.bars.map((b) => b.time) : null;
-    return asData(times ? withGaps(line.kind, points, times) : points);
+    return asData(times ? withGaps(line.kind, points, times, line.steps) : points);
   }
 
   private applyStyle(e: Entry): void {
