@@ -89,3 +89,14 @@ describe('T3.6 indicator store', () => {
     expect(isValidParam(f, 2.25)).toBe(false);
   });
 });
+
+describe('restore', () => {
+  it('new ids do not collide with restored ones', () => {
+    const s = useIndicatorStore.getState();
+    const base = { params: { period: 20 }, colors: {}, widths: {}, visible: true };
+    s.restore([{ id: 'ind-41', type: 'sma', ...base }], true);
+    const id = useIndicatorStore.getState().add('ema');
+    expect(id).not.toBe('ind-41');
+    expect(Number(id.slice(4))).toBeGreaterThan(41);
+  });
+});

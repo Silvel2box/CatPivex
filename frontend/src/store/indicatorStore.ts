@@ -105,7 +105,7 @@ export const useIndicatorStore = create<IndicatorState>()((set, get) => ({
   toggleVolume: () => set((s) => ({ volumeVisible: !s.volumeVisible })),
   restore: (instances, volumeVisible) => {
     for (const i of instances) {
-      const n = Number(/^ind-(d+)$/.exec(i.id)?.[1]);
+      const n = Number(/^ind-(\d+)$/.exec(i.id)?.[1]);
       if (n >= nextId) nextId = n + 1;
     }
     set({ instances, volumeVisible });
