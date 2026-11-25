@@ -54,10 +54,10 @@ export interface CatpivexDebug {
     hoveredId: string | null;
     /** Aiming dot: where a click would place a point (tool active). */
     ghost: { time: number; price: number } | null;
-    /** Axis labels: every hline's price, plus the anchors of the selected/being-drawn drawing. */
+    /** Axis labels: every hline's and ray's price, plus the anchors of the selected/being-drawn drawing. */
     priceLabels: string[];
     timeLabels: string[];
-    /** hline ids drawn with the alert bell. */
+    /** hline / ray ids drawn with the alert bell. */
     alertLines: string[];
   };
   /** x for any time (interpolated between bars), pane px; null without data. */

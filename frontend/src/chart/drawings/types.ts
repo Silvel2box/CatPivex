@@ -1,7 +1,7 @@
 // Phase 4 drawing contract. Anchors are (time, price), never pixels, so a drawing stays put
 // across zoom, scroll and timeframe changes. Stored per symbol via /api/drawings/{symbol}.
 
-export type DrawingType = 'hline' | 'vline' | 'trendline' | 'rect' | 'fib';
+export type DrawingType = 'hline' | 'hray' | 'vline' | 'trendline' | 'rect' | 'fib';
 
 /** time = unix seconds UTC, integer, may fall between bars (or outside the loaded data). */
 export interface Anchor {
@@ -21,6 +21,7 @@ interface Base {
 
 export type Drawing =
   | (Base & { type: 'hline'; price: number })
+  | (Base & { type: 'hray'; a: Anchor })
   | (Base & { type: 'vline'; time: number })
   | (Base & { type: 'trendline' | 'rect'; a: Anchor; b: Anchor })
   /**
@@ -32,6 +33,7 @@ export type Drawing =
 /** Anchor count per tool: 1 = one click, 2 = click start, click end. */
 export const ANCHOR_COUNT: Record<DrawingType, 1 | 2> = {
   hline: 1,
+  hray: 1,
   vline: 1,
   trendline: 2,
   rect: 2,
@@ -40,6 +42,7 @@ export const ANCHOR_COUNT: Record<DrawingType, 1 | 2> = {
 
 export const DEFAULT_COLOR: Record<DrawingType, string> = {
   hline: '#2962ff',
+  hray: '#2962ff',
   vline: '#2962ff',
   trendline: '#2962ff',
   rect: '#9c27b0', // fill = this colour at RECT_FILL_ALPHA
@@ -83,6 +86,7 @@ export interface Point {
  */
 export type PixelShape =
   | { type: 'hline'; y: number }
+  | { type: 'hray'; a: Point }
   | { type: 'vline'; x: number }
   | { type: 'trendline'; a: Point; b: Point }
   | { type: 'rect'; a: Point; b: Point }

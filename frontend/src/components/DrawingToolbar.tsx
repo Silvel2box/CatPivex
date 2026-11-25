@@ -47,6 +47,17 @@ const TOOLS: { type: DrawingType; label: string; key: string; icon: ReactNode }[
     ),
   },
   {
+    type: 'hray',
+    label: 'Horizontal ray',
+    key: 'Alt+J',
+    icon: svg(
+      <>
+        <path d="M6 12h15" />
+        <circle cx="6" cy="12" r="1.8" fill="currentColor" />
+      </>,
+    ),
+  },
+  {
     type: 'vline',
     label: 'Vertical line',
     key: 'Alt+V',

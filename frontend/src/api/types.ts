@@ -94,7 +94,7 @@ export interface LayoutResponse {
 // GET /api/alerts -> Alert[] · POST body AlertCreate -> Alert · PATCH /api/alerts/{id} body
 // AlertUpdate -> Alert · DELETE -> 204 · GET /api/alerts/events?after=<id>&limit= -> AlertEvent[]
 // newest first, id > after (poll it for browser notifications; also the history).
-// Linked alert (drawing_id = an hline of the same symbol): price follows the line via
+// Linked alert (drawing_id = an hline or hray of the same symbol): price follows the line via
 // PUT /api/drawings, deleting the line deletes the alert, PATCH price -> 422. Flush pending
 // drawing saves before POSTing one.
 export type AlertCondition = 'crosses' | 'crosses_above' | 'crosses_below' | 'gte' | 'lte';

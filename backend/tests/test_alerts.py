@@ -187,6 +187,31 @@ def test_hline_prices():
     assert hline_prices(drawings) == {"h1": 101.5, "h2": 7.0, "h3": None, "h4": None, "h5": None}
 
 
+def test_hline_prices_hray():
+    a = {"time": 1_700_000_000}
+    drawings = [
+        {"id": "r1", "type": "hray", "a": {**a, "price": 101.5}},
+        {"id": "r2", "type": "hray", "a": {**a, "price": 7}, "price": 999},
+        {"id": "r3", "type": "hray", "a": {**a, "price": 0}},
+        {"id": "r4", "type": "hray", "a": {**a, "price": True}},
+        {"id": "r5", "type": "hray", "a": {**a, "price": float("inf")}},
+        {"id": "r6", "type": "hray", "a": [1, 2]},
+        {"id": "r7", "type": "hray", "price": 5},
+        {"id": "r8", "type": "hray", "a": {"time": 1}},
+        {"id": "t1", "type": "trendline", "a": {**a, "price": 5}},
+    ]
+    assert hline_prices(drawings) == {
+        "r1": 101.5,
+        "r2": 7.0,
+        "r3": None,
+        "r4": None,
+        "r5": None,
+        "r6": None,
+        "r7": None,
+        "r8": None,
+    }
+
+
 # --- T5.2 trigger (fake feed + fake clock, several checks) ----------------------------------
 
 M0 = NOW // 60 * 60 + 600  # start of a minute, after NOW
