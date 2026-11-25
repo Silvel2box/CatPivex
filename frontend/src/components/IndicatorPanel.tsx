@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { instanceLabel } from '../chart/indicatorData';
 import { INDICATORS, type IndicatorType, type ParamField, type Params } from '../chart/indicators';
+import { useIndicatorPanelStore } from '../store/indicatorPanelStore';
 import {
   DEFAULT_LINE_WIDTH,
   isValidParam,
@@ -52,17 +53,28 @@ function ParamInput({
   );
 }
 
-function InstanceRow({ inst }: { inst: IndicatorInstance }) {
+function InstanceRow({ inst, focused }: { inst: IndicatorInstance; focused: boolean }) {
   const { remove, updateParams, setColor, setWidth, toggleVisible } = useIndicatorStore.getState();
   const def = INDICATORS[inst.type];
   const commit = (patch: Params) => updateParams(inst.id, patch);
+  const ref = useRef<HTMLLIElement>(null);
+
+  useEffect(() => {
+    if (!focused) return;
+    ref.current?.scrollIntoView({ block: 'nearest' });
+    ref.current?.querySelector<HTMLElement>('[data-testid^="ind-param-"]')?.focus();
+  }, [focused]);
 
   return (
     <li
+      ref={ref}
       data-testid="ind-instance"
       data-type={inst.type}
       data-ind-id={inst.id}
-      className="flex flex-col gap-1 border-b border-[#2a2e39] px-3 py-2 last:border-b-0"
+      data-focused={focused || undefined}
+      className={`flex flex-col gap-1 border-b border-[#2a2e39] px-3 py-2 last:border-b-0 ${
+        focused ? 'bg-[#2a2e39]/50' : ''
+      }`}
     >
       <div className="flex items-center justify-between gap-2">
         <span className={inst.visible ? '' : 'text-[#787b86]'}>
@@ -140,17 +152,19 @@ export function IndicatorPanel() {
   const instances = useIndicatorStore((s) => s.instances);
   const volumeVisible = useIndicatorStore((s) => s.volumeVisible);
   const { add, toggleVolume } = useIndicatorStore.getState();
-  const [open, setOpen] = useState(false);
+  const open = useIndicatorPanelStore((s) => s.open);
+  const focusId = useIndicatorPanelStore((s) => s.focusId);
+  const { toggle, close } = useIndicatorPanelStore.getState();
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Click outside / Escape closes.
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+      if (!rootRef.current?.contains(e.target as Node)) close();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape') close();
     };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
@@ -158,7 +172,7 @@ export function IndicatorPanel() {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [open, close]);
 
   return (
     <div ref={rootRef} className="relative">
@@ -166,7 +180,7 @@ export function IndicatorPanel() {
         type="button"
         data-testid="indicators-button"
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         className={`rounded px-2 py-1 ${open ? 'bg-[#2a2e39]' : 'hover:bg-[#2a2e39]'}`}
       >
         Indicators{instances.length > 0 && ` (${instances.length})`}
@@ -204,7 +218,7 @@ export function IndicatorPanel() {
           ) : (
             <ul>
               {instances.map((inst) => (
-                <InstanceRow key={inst.id} inst={inst} />
+                <InstanceRow key={inst.id} inst={inst} focused={inst.id === focusId} />
               ))}
             </ul>
           )}
