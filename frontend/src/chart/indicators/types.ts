@@ -1,8 +1,19 @@
-import type { Candle } from '../../api/types';
+import type { Candle, Interval } from '../../api/types';
 
 // Formulas are specified in FORMULAS.md — implementations must match it exactly.
 
-export type IndicatorType = 'sma' | 'ema' | 'bb' | 'vwap' | 'rsi' | 'macd';
+export type IndicatorType =
+  | 'sma'
+  | 'ema'
+  | 'bb'
+  | 'vwap'
+  | 'rsi'
+  | 'macd'
+  | 'stoch'
+  | 'stochrsi'
+  | 'atr'
+  | 'supertrend'
+  | 'pivot';
 
 /** Values of one bar, keyed by line name. A missing key = that line is undefined at this bar. */
 export type BarValues = Record<string, number>;
@@ -10,6 +21,8 @@ export type BarValues = Record<string, number>;
 export interface CalcContext {
   /** Session-day key for a candle time (VWAP reset). See dayKeyFor() in index.ts. */
   dayKey(time: number): string;
+  interval?: Interval;
+  daily?: Candle[] | null;
 }
 
 /**
@@ -45,6 +58,7 @@ export interface ParamField {
   min: number;
   max: number;
   step: number;
+  options?: { value: number; label: string }[];
 }
 
 export interface LineDef {
@@ -52,6 +66,7 @@ export interface LineDef {
   label: string;
   color: string;
   kind: 'line' | 'histogram';
+  gaps?: boolean;
 }
 
 export interface IndicatorDef {
@@ -65,6 +80,7 @@ export interface IndicatorDef {
   levels?: number[];
   /** Hidden on 1D/1W (VWAP). */
   intradayOnly?: boolean;
+  needsDaily?: boolean;
   // Method syntax in IndicatorCalc makes a calc with specific params/state assignable here.
   calc: IndicatorCalc<Params, unknown>;
 }

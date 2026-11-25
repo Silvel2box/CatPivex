@@ -18,3 +18,19 @@ Fixtures avoid flat windows (libraries differ there); a unit test pins this choi
 
 Realtime: a bar with the same `time` as the last bar replaces it; a newer bar is appended.
 Incremental results must equal a full recompute (T3.2).
+
+## Phase 7 additions (locked)
+
+`SMA(x, n)` below = mean of the last `n` defined values of series `x` (first point once `n` exist).
+
+- **`stoch`** (kLength 14, kSmooth 3, dSmooth 3) → `k`, `d`. `raw = 100·(close − LL)/(HH − LL)` with `HH`/`LL` = highest high / lowest low of the last `kLength` bars (first at `i = kLength−1`); `HH = LL` → `raw = 0` (TA-Lib). `k = SMA(raw, kSmooth)`, `d = SMA(k, dSmooth)`. Fixture: TA-Lib `STOCHF(fastk=kLength, fastd=1)` for `raw`, then `talib.SMA` twice (TA-Lib `STOCH` starts `k` at `d`'s first bar).
+- **`stochrsi`** (rsiLength 14, stochLength 14, kSmooth 3, dSmooth 3) → `k`, `d`. `r = rsi(close, rsiLength)` (the `rsi` above). `raw = 100·(r − min)/(max − min)` over the last `stochLength` values of `r`; `max = min` → `raw = 0`. `k = SMA(raw, kSmooth)`, `d = SMA(k, dSmooth)` (Pine's Stoch RSI). Fixture: `talib.RSI` + pandas rolling min/max/mean.
+- **`atr`** (period 14) → `value`. `TR₀ = high − low`; `TRᵢ = max(high − low, |high − closeᵢ₋₁|, |low − closeᵢ₋₁|)`. TA-Lib seeding: first point at `i = period` = mean of `TR₁..TR_period` (bar 0 is not used), then `atr = (atr·(period−1) + TR)/period`. Pine seeds with bar 0 included one bar earlier; the two converge within the warm-up. Fixture: `talib.ATR`.
+- **`supertrend`** (atrPeriod 10, factor 3) → `up`, `down` (gaps). Pine `ta.supertrend` with the `atr` above and `src = (high+low)/2`: `upper = src + factor·atr`, `lower = src − factor·atr`; `lower := lower > prevLower or close[1] < prevLower ? lower : prevLower`, `upper := upper < prevUpper or close[1] > prevUpper ? upper : prevUpper` (prev = 0 before the first defined bar); direction = `1` on the first defined bar, else `prevST == prevUpper ? (close > upper ? −1 : 1) : (close < lower ? 1 : −1)`; `st = direction == −1 ? lower : upper`. `up = st` when direction is −1 (uptrend), `down = st` when 1. Fixture: a numpy loop of this rule over `talib.ATR` in `gen_fixtures.py`.
+- **`pivot`** (kind 0 Standard / 1 Fibonacci / 2 Camarilla, timeframe 0 Auto / 1 Day / 2 Week / 3 Month) → `P`, `R1..R4`, `S1..S4` (gaps). Needs `ctx.daily` (1D candles, time = 00:00 UTC of the trading date). Auto: interval ≤ 15m → Day, 30m–4h → Week, 1D/1W → Month. Period of a daily candle: its UTC date; week = ISO week (Monday start) of that date; month = `yyyy-mm`. Period of a chart bar: intraday → `ctx.dayKey(time)`; 1D/1W → UTC date; then week/month of that date. `H/L/C` = max high, min low, last close of the daily candles in the previous period (the latest period in `daily` before the bar's own). None → no point.
+  - Standard: `P = (H+L+C)/3`, `R1 = 2P − L`, `S1 = 2P − H`, `R2 = P + (H−L)`, `S2 = P − (H−L)`, `R3 = H + 2(P − L)`, `S3 = L − 2(H − P)`.
+  - Fibonacci: same `P`; `R1/S1 = P ± 0.382(H−L)`, `R2/S2 = P ± 0.618(H−L)`, `R3/S3 = P ± (H−L)`.
+  - Camarilla: same `P`; `R1/S1 = C ± 1.1(H−L)/12`, `R2/S2 = C ± 1.1(H−L)/6`, `R3/S3 = C ± 1.1(H−L)/4`, `R4/S4 = C ± 1.1(H−L)/2`.
+  - `R4`/`S4` only for Camarilla. Fixture: pandas groupby of daily candles + `shift(1)`.
+
+`gaps: true` lines: the chart shows a break (whitespace) on bars where the line has no value, instead of joining across.
