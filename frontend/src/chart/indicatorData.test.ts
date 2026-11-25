@@ -11,6 +11,8 @@ import {
   indexAt,
   instanceLabel,
   toSeriesData,
+  withHiddenSources,
+  type LegendSource,
 } from './indicatorData';
 import type { IndicatorCalc, IndicatorDef, Params } from './indicators/types';
 
@@ -149,5 +151,46 @@ describe('T3.7 indicator helpers', () => {
     expect(buildLegend({ symbol: 'X', interval: '1D', bars: [], time: null, sources: [] })).toEqual(
       { symbol: 'X', interval: '1D', time: null, bar: null, color: '#26a69a', rows: [] },
     );
+  });
+});
+
+describe('T7.4 legend rows for hidden instances', () => {
+  const rendered = (id: string, type: string): LegendSource => ({
+    id,
+    def: DEFS[type],
+    params: {},
+    colors: {},
+    lines: { value: [{ time: 60, value: 7 }] },
+  });
+
+  it('keeps hidden instances listed in store order, without values', () => {
+    const list = [inst('a', 'sma', false), inst('b', 'sma'), inst('c', 'macd', false)];
+    const b = rendered('b', 'sma');
+    const sources = withHiddenSources(list, [b], DEFS, '1m');
+    expect(sources.map((s) => [s.id, s.hidden === true])).toEqual([
+      ['a', true],
+      ['b', false],
+      ['c', true],
+    ]);
+    expect(sources[1]).toBe(b);
+
+    const legend = buildLegend({
+      symbol: 'X',
+      interval: '1m',
+      bars: [bar(60, 1, 2)],
+      time: null,
+      sources,
+    });
+    expect(legend.rows.map((r) => [r.id, r.hidden, r.values.length])).toEqual([
+      ['a', true, 0],
+      ['b', false, 1],
+      ['c', true, 0],
+    ]);
+  });
+
+  it('skips visible instances that are not rendered and hidden intradayOnly ones on 1D/1W', () => {
+    const list = [inst('a', 'sma'), inst('v', 'vwap', false)];
+    expect(withHiddenSources(list, [], DEFS, '5m').map((s) => s.id)).toEqual(['v']);
+    expect(withHiddenSources(list, [], DEFS, '1D')).toEqual([]);
   });
 });

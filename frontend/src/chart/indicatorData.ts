@@ -81,6 +81,25 @@ export interface LegendSource {
   params: Params;
   colors: Record<string, string>;
   lines: Record<string, LinePoint[]>;
+  hidden?: boolean;
+}
+
+export function withHiddenSources(
+  instances: IndicatorInstance[],
+  rendered: LegendSource[],
+  defs: Record<string, IndicatorDef>,
+  interval: Interval,
+): LegendSource[] {
+  const byId = new Map(rendered.map((s) => [s.id, s]));
+  return instances.flatMap((i): LegendSource[] => {
+    const shown = byId.get(i.id);
+    if (shown) return [shown];
+    if (i.visible || activeInstances([{ ...i, visible: true }], defs, interval).length === 0)
+      return [];
+    return [
+      { id: i.id, def: defs[i.type], params: i.params, colors: i.colors, lines: {}, hidden: true },
+    ];
+  });
 }
 
 export interface LegendValue {
@@ -96,7 +115,7 @@ export interface LegendModel {
   time: number | null;
   bar: Candle | null;
   color: string;
-  rows: { id: string; label: string; values: LegendValue[] }[];
+  rows: { id: string; label: string; hidden: boolean; values: LegendValue[] }[];
 }
 
 /** Legend for the bar at `time` (crosshair), or the last bar when `time` is null / not a bar. */
@@ -119,7 +138,8 @@ export function buildLegend(input: {
     rows: input.sources.map((s) => ({
       id: s.id,
       label: instanceLabel(s.def, s.params),
-      values: s.def.lines.map((l) => {
+      hidden: s.hidden === true,
+      values: (s.hidden ? [] : s.def.lines).map((l) => {
         const points = s.lines[l.key] ?? [];
         const j = bar ? indexAt(points, bar.time) : -1;
         const v = j >= 0 ? points[j].value : undefined;

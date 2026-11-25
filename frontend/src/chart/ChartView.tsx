@@ -11,7 +11,8 @@ import { useIndicatorStore } from '../store/indicatorStore';
 import { asOfTitle, formatAsOf } from './asOf';
 import { DrawingController } from './drawings/controller';
 import { DrawingsPrimitive } from './drawings/DrawingsPrimitive';
-import { buildLegend } from './indicatorData';
+import { buildLegend, withHiddenSources } from './indicatorData';
+import { INDICATORS } from './indicators';
 import { IndicatorLayer } from './indicatorSeries';
 import { setLastPriceSource } from './lastPrice';
 import { Legend, createLegendFeed } from './Legend';
@@ -107,7 +108,12 @@ export function ChartView() {
           interval: live?.interval ?? '1m',
           bars: live?.bars ?? [],
           time: hoverTime,
-          sources: layer.legendSources(),
+          sources: withHiddenSources(
+            useIndicatorStore.getState().instances,
+            layer.legendSources(),
+            INDICATORS,
+            live?.interval ?? '1m',
+          ),
         }),
       );
     };
