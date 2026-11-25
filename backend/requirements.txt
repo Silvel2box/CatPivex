@@ -3,3 +3,4 @@ uvicorn[standard]
 httpx
 yfinance==1.8.0
 tzdata
+apscheduler>=3.10,<4

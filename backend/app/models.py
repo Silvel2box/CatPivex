@@ -35,12 +35,36 @@ Chart layout (one opaque JSON object):
   GET /api/layout                  -> LayoutResponse, layout null until the first save
   PUT /api/layout                  body {"layout": {...}} ({} is allowed) -> stored layout
 
+Price alerts (Phase 5; evaluation rules in app/services/alerts.py):
+  GET    /api/alerts                  -> list[Alert], ascending id
+  POST   /api/alerts                  body AlertCreate -> Alert (201)
+  PATCH  /api/alerts/{id}             body AlertUpdate (only the fields to change) -> Alert
+  DELETE /api/alerts/{id}             -> 204 (404 not_found if absent)
+  GET    /api/alerts/events?after=<event id>&limit=50   (limit 1..500)
+                                      -> list[AlertEvent], newest first, only id > after.
+    The frontend polls this for browser notifications (it remembers the newest id it has seen)
+    and shows it as the history. Events stay when their alert is deleted.
+  Linked alerts (drawing_id set) follow a horizontal line of the same symbol:
+    - POST with drawing_id: 422 validation_error unless that symbol's saved drawings hold an
+      'hline' with that id; `price` is then taken from the line (the body's value is ignored).
+      The frontend flushes pending drawing saves before posting.
+    - PUT /api/drawings/{symbol} syncs them: line moved -> alert price = line price; line gone
+      -> alert deleted. DELETE /api/drawings/{symbol} deletes them all.
+    - PATCH of `price` on a linked alert: 422 validation_error (move the line instead).
+  Checks run in the backend (APScheduler, started with the app when settings.alerts_enabled).
+
+Test feed (only when CATPIVEX_TEST_FEED=1, for e2e; never in normal runs):
+  Exchange TEST (realtime, no search results): any ticker, 1m candles only, kept in memory.
+  PUT /api/test/price  body {"symbol": "TEST:FOO", "price": 100.0} -> 204
+    Updates the 1m bar of the current minute (first price of a minute opens o=h=l=c, later ones
+    move h/l/c), so alerts on TEST:* see a price crossing within one check interval.
+
 Every error response (any status >= 400) has the body ErrorResponse.
 """
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, FiniteFloat
 
 Interval = Literal["1m", "5m", "15m", "1h", "4h", "1D", "1W"]
 INTERVALS: tuple[str, ...] = ("1m", "5m", "15m", "1h", "4h", "1D", "1W")
@@ -149,3 +173,51 @@ class LayoutBody(BaseModel):
 
 class LayoutResponse(BaseModel):
     layout: JsonObject | None
+
+
+AlertCondition = Literal["crosses", "crosses_above", "crosses_below", "gte", "lte"]
+MAX_ALERT_NOTE = 200
+
+
+class Alert(BaseModel):
+    id: int
+    symbol: str  # canonical, e.g. "BINANCE:BTCUSDT"
+    condition: AlertCondition
+    price: float  # the level; for a linked alert, kept equal to its line's price
+    repeat: bool  # False = disable after the first trigger
+    enabled: bool
+    drawing_id: str | None  # the 'hline' this alert follows, None = standalone
+    note: str
+    created_at: int  # unix s
+    last_triggered_at: int | None
+
+
+class AlertCreate(BaseModel):
+    symbol: str
+    condition: AlertCondition
+    price: FiniteFloat = Field(gt=0)
+    repeat: bool = False
+    drawing_id: str | None = Field(default=None, min_length=1, max_length=100)
+    note: str = Field(default="", max_length=MAX_ALERT_NOTE)
+
+
+class AlertUpdate(BaseModel):
+    """PATCH body: only the fields sent are changed. symbol / drawing_id cannot change."""
+
+    condition: AlertCondition | None = None
+    price: FiniteFloat | None = Field(default=None, gt=0)
+    repeat: bool | None = None
+    enabled: bool | None = None
+    note: str | None = Field(default=None, max_length=MAX_ALERT_NOTE)
+
+
+class AlertEvent(BaseModel):
+    id: int
+    alert_id: int  # the alert may have been deleted since
+    symbol: str
+    condition: AlertCondition
+    level: float  # alert price at the time of the trigger
+    price: float  # latest close at the check that triggered
+    time: int  # unix s of the check
+    message: str  # the text sent to Telegram/LINE
+    deliveries: dict[str, str]  # channel -> "ok" | "error: ..." ({} if no channel configured)

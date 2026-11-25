@@ -16,6 +16,19 @@ DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
 class Settings:
     db_path: Path
     cors_origins: list[str]
+    # Phase 5 alerts. The defaults keep the scheduler off (tests build Settings directly);
+    # load_settings turns it on unless CATPIVEX_ALERTS=0.
+    alerts_enabled: bool = False
+    # CATPIVEX_ALERT_INTERVAL_S: one check interval for every symbol (e2e). None = 30 s crypto /
+    # 60 s others (services/alerts.py check_interval).
+    alert_interval_s: int | None = None
+    # CATPIVEX_TEST_FEED=1: adds the in-memory TEST exchange and PUT /api/test/price (e2e only).
+    test_feed: bool = False
+    # A channel is used only when both of its values are set.
+    telegram_bot_token: str | None = None
+    telegram_chat_id: str | None = None
+    line_channel_token: str | None = None
+    line_user_id: str | None = None
 
 
 def read_env_file(path: Path) -> dict[str, str]:
@@ -40,7 +53,15 @@ def load_settings(
     if not db_path.is_absolute():
         db_path = BACKEND_DIR / db_path  # relative to backend/, not the cwd
     origins = values.get("CATPIVEX_CORS_ORIGINS") or DEFAULT_CORS_ORIGINS
+    interval = values.get("CATPIVEX_ALERT_INTERVAL_S")
     return Settings(
         db_path=db_path,
         cors_origins=[o.strip() for o in origins.split(",") if o.strip()],
+        alerts_enabled=values.get("CATPIVEX_ALERTS", "1") != "0",
+        alert_interval_s=int(interval) if interval else None,
+        test_feed=values.get("CATPIVEX_TEST_FEED") == "1",
+        telegram_bot_token=values.get("TELEGRAM_BOT_TOKEN") or None,
+        telegram_chat_id=values.get("TELEGRAM_CHAT_ID") or None,
+        line_channel_token=values.get("LINE_CHANNEL_TOKEN") or None,
+        line_user_id=values.get("LINE_USER_ID") or None,
     )

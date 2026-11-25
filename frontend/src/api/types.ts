@@ -89,3 +89,64 @@ export interface DrawingsResponse {
 export interface LayoutResponse {
   layout: Record<string, unknown> | null;
 }
+
+// Price alerts (Phase 5). Full rules: backend/app/models.py docstring + services/alerts.py.
+// GET /api/alerts -> Alert[] · POST body AlertCreate -> Alert · PATCH /api/alerts/{id} body
+// AlertUpdate -> Alert · DELETE -> 204 · GET /api/alerts/events?after=<id>&limit= -> AlertEvent[]
+// newest first, id > after (poll it for browser notifications; also the history).
+// Linked alert (drawing_id = an hline of the same symbol): price follows the line via
+// PUT /api/drawings, deleting the line deletes the alert, PATCH price -> 422. Flush pending
+// drawing saves before POSTing one.
+export type AlertCondition = 'crosses' | 'crosses_above' | 'crosses_below' | 'gte' | 'lte';
+export const ALERT_CONDITIONS: readonly AlertCondition[] = [
+  'crosses',
+  'crosses_above',
+  'crosses_below',
+  'gte',
+  'lte',
+];
+export const MAX_ALERT_NOTE = 200;
+
+export interface Alert {
+  id: number;
+  symbol: string;
+  condition: AlertCondition;
+  price: number;
+  /** false = disabled after the first trigger */
+  repeat: boolean;
+  enabled: boolean;
+  drawing_id: string | null;
+  note: string;
+  created_at: number;
+  last_triggered_at: number | null;
+}
+
+export interface AlertCreate {
+  symbol: string;
+  condition: AlertCondition;
+  /** > 0; ignored (taken from the line) when drawing_id is set */
+  price: number;
+  repeat?: boolean;
+  drawing_id?: string | null;
+  note?: string;
+}
+
+/** PATCH: only the fields to change. */
+export type AlertUpdate = Partial<
+  Pick<Alert, 'condition' | 'price' | 'repeat' | 'enabled' | 'note'>
+>;
+
+export interface AlertEvent {
+  id: number;
+  alert_id: number;
+  symbol: string;
+  condition: AlertCondition;
+  /** alert price at the time of the trigger */
+  level: number;
+  /** latest close at the check that triggered */
+  price: number;
+  time: number;
+  message: string;
+  /** channel -> "ok" | "error: ..." */
+  deliveries: Record<string, string>;
+}

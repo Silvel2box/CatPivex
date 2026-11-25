@@ -1,5 +1,5 @@
 """SQLite storage: closed candles, which time ranges were fetched (coverage), the watchlist,
-drawings per symbol and the chart layout."""
+drawings per symbol, the chart layout, price alerts and their trigger history."""
 
 import json
 import sqlite3
@@ -42,6 +42,40 @@ CREATE TABLE IF NOT EXISTS meta (
 CREATE TABLE IF NOT EXISTS drawings (
     symbol TEXT PRIMARY KEY,
     data   TEXT NOT NULL
+);
+-- Price alerts (API shape: models.Alert). base_* and armed are evaluation state, internal, see
+-- services/alerts.py: the newest 1m bar seen at the last check (time/high/low/close; NULL = no
+-- baseline yet) and whether a gte/lte alert may fire.
+CREATE TABLE IF NOT EXISTS alerts (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol            TEXT    NOT NULL,
+    condition         TEXT    NOT NULL,
+    price             REAL    NOT NULL,
+    repeat            INTEGER NOT NULL DEFAULT 0,
+    enabled           INTEGER NOT NULL DEFAULT 1,
+    drawing_id        TEXT,
+    note              TEXT    NOT NULL DEFAULT '',
+    created_at        INTEGER NOT NULL,
+    last_triggered_at INTEGER,
+    base_time         INTEGER,
+    base_high         REAL,
+    base_low          REAL,
+    base_close        REAL,
+    armed             INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS alerts_symbol ON alerts (symbol);
+-- Trigger history (models.AlertEvent). No foreign key: history outlives deleted alerts.
+-- deliveries = JSON object channel -> "ok" | "error: ...".
+CREATE TABLE IF NOT EXISTS alert_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    alert_id   INTEGER NOT NULL,
+    symbol     TEXT    NOT NULL,
+    condition  TEXT    NOT NULL,
+    level      REAL    NOT NULL,
+    price      REAL    NOT NULL,
+    time       INTEGER NOT NULL,
+    message    TEXT    NOT NULL,
+    deliveries TEXT    NOT NULL
 );
 """
 
