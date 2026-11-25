@@ -109,6 +109,12 @@ Test IDs (T1.1, T1.2, …) in test names match the test list in the project trac
 - **Floating bar**: appears when a drawing is selected, with colour, width, Fibonacci options, alert and delete. Drag it by its grip; the position is saved.
 - **Stay in drawing mode** (lock button under the magnet): the tool stays active after each drawing, so you can place several lines in a row. Esc or right-click leaves the tool.
 
+### Phase 7: indicators, round 2 ✅ (2026-11-25)
+- New indicators: **Stochastic**, **Stoch RSI**, **ATR**, **Supertrend** and **Pivot Points** (Standard / Fibonacci / Camarilla; Auto, daily, weekly or monthly). Formulas: `frontend/src/chart/indicators/FORMULAS.md`; test values come from TA-Lib and pandas.
+- Pivot Points use the 1D candles of the symbol (fetched automatically). Auto = daily pivots up to 15m, weekly on 30m–4h, monthly on 1D/1W. Each period is its own segment, and Supertrend breaks where the trend flips.
+- ATR follows TA-Lib's start (the first value is one bar later than TradingView's); the values match after the first few dozen bars.
+- Legend: hover an indicator's name for 👁 hide/show, ⚙ settings (opens the Indicators panel at that indicator) and × remove. A hidden indicator stays in the legend, dimmed.
+
 ## Terms of use
 
 CatPivex is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE.md).
