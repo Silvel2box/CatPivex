@@ -12,6 +12,7 @@ import type {
 import type { Candle } from '../../api/types';
 import { logicalToTime, logicalToX, timeToLogical, xToLogical, type ScaleLike } from './coords';
 import { fibPrices, hitTestAll } from './geometry';
+import { MEASURE_FILL_ALPHA, measureColor, measureLines, measureStats } from './measure';
 import {
   FIB_FILL_ALPHA,
   FIB_LEVELS,
@@ -60,6 +61,7 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
   private preview: Drawing | null = null;
   /** Where the next click would place a point (tool active, nothing clicked yet). */
   private ghost: { anchor: Anchor; color: string } | null = null;
+  private measureAB: { a: Anchor; b: Anchor } | null = null;
   /** hlines with an enabled price alert (bell mark). */
   private alertLines: ReadonlySet<string> = new Set();
   private projected: Projected[] = [];
@@ -96,12 +98,14 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     preview: Drawing | null;
     hoveredId: string | null;
     ghost: { anchor: Anchor; color: string } | null;
+    measure: { a: Anchor; b: Anchor } | null;
   }): void {
     this.drawings = s.drawings;
     this.selectedId = s.selectedId;
     this.preview = s.preview;
     this.hoveredId = s.hoveredId;
     this.ghost = s.ghost;
+    this.measureAB = s.measure;
     this.requestUpdate?.();
   }
 
@@ -193,6 +197,15 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
       priceLabels: this.priceLabels.map((l) => l.text),
       timeLabels: this.timeLabels.map((l) => l.text),
     };
+  }
+
+  /** The ruler: its anchors and the two label lines exactly as drawn. */
+  measure(): { a: Anchor; b: Anchor; lines: string[] } | null {
+    if (!this.measureAB) return null;
+    const { a, b } = this.measureAB;
+    const stats = measureStats(a, b, this.times(), this.getIntervalSec());
+    const format = (p: number) => this.series?.priceFormatter().format(p) ?? String(p);
+    return { a, b, lines: measureLines(stats, format) };
   }
 
   /** y of a price on the candle pane; null without data. */
@@ -308,6 +321,9 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     const ghost = this.ghostPoint();
     const ghostColor = this.ghost?.color ?? '#2962ff';
     const alertLines = this.alertLines;
+    const measure = this.measure();
+    const ma = measure && this.point(measure.a);
+    const mb = measure && this.point(measure.b);
     const format = (p: number) => this.series?.priceFormatter().format(p) ?? String(p);
     return {
       draw: (target) => {
@@ -390,6 +406,9 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
             }
             ctx.restore();
           }
+          if (measure && ma && mb) {
+            drawMeasure(ctx, ma, mb, measureColor(measure.a, measure.b), measure.lines, mediaSize);
+          }
           if (ghost) {
             ctx.beginPath();
             ctx.arc(ghost.x, ghost.y, HANDLE_RADIUS - 1, 0, Math.PI * 2);
@@ -406,6 +425,60 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
 }
 
 const BELL_INSET = 14;
+const MEASURE_ARROW = 8;
+const MEASURE_PAD_X = 6;
+const MEASURE_PAD_Y = 4;
+const MEASURE_LINE_H = 15;
+const MEASURE_GAP = 6;
+
+function drawMeasure(
+  ctx: CanvasRenderingContext2D,
+  a: Point,
+  b: Point,
+  color: string,
+  lines: string[],
+  pane: { width: number; height: number },
+) {
+  ctx.save();
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  const w = Math.abs(a.x - b.x);
+  const h = Math.abs(a.y - b.y);
+  ctx.fillStyle = withAlpha(color, MEASURE_FILL_ALPHA);
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 1;
+  line(ctx, a.x, a.y, b.x, b.y);
+  if (w > 0 || h > 0) {
+    const angle = Math.atan2(b.y - a.y, b.x - a.x);
+    ctx.beginPath();
+    ctx.moveTo(b.x, b.y);
+    for (const side of [-1, 1]) {
+      const t = angle + Math.PI + (side * Math.PI) / 7;
+      ctx.lineTo(b.x + MEASURE_ARROW * Math.cos(t), b.y + MEASURE_ARROW * Math.sin(t));
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.font = LABEL_FONT;
+  const lw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 2 * MEASURE_PAD_X;
+  const lh = lines.length * MEASURE_LINE_H + 2 * MEASURE_PAD_Y;
+  const ly = b.y <= a.y ? y - MEASURE_GAP - lh : y + h + MEASURE_GAP;
+  const lx = x + w / 2 - lw / 2;
+  const cx = Math.max(0, Math.min(lx, pane.width - lw));
+  const cy = Math.max(0, Math.min(ly, pane.height - lh));
+  ctx.beginPath();
+  ctx.roundRect(cx, cy, lw, lh, 3);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  lines.forEach((l, i) => {
+    ctx.fillText(l, cx + lw / 2, cy + MEASURE_PAD_Y + MEASURE_LINE_H * (i + 0.5));
+  });
+  ctx.restore();
+}
 
 function bell(ctx: CanvasRenderingContext2D, cx: number, cy: number, color: string) {
   ctx.beginPath();

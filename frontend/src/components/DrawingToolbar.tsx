@@ -84,8 +84,10 @@ const btn = (active: boolean) =>
 export function DrawingToolbar() {
   const tool = useDrawingStore((s) => s.tool);
   const magnet = useDrawingStore((s) => s.magnet);
+  const measuring = useDrawingStore((s) => s.measuring);
   const selected = useDrawingStore((s) => s.drawings.find((d) => d.id === s.selectedId) ?? null);
-  const { setTool, setMagnet, setStyle, remove, reverse } = useDrawingStore.getState();
+  const { setTool, setMagnet, setMeasuring, setStyle, remove, reverse } =
+    useDrawingStore.getState();
 
   return (
     <nav
@@ -96,9 +98,9 @@ export function DrawingToolbar() {
         type="button"
         data-testid="draw-tool-cursor"
         title="Cursor (Esc)"
-        aria-pressed={tool === null}
+        aria-pressed={tool === null && !measuring}
         onClick={() => setTool(null)}
-        className={btn(tool === null)}
+        className={btn(tool === null && !measuring)}
       >
         {svg(<path d="M6 4l12 7-5.5 1.2L15 18l-2 1-2.6-5.6L6 17z" fill="currentColor" />)}
       </button>
@@ -115,6 +117,16 @@ export function DrawingToolbar() {
           {t.icon}
         </button>
       ))}
+      <button
+        type="button"
+        data-testid="draw-tool-measure"
+        title="Measure (Shift+click)"
+        aria-pressed={measuring}
+        onClick={() => setMeasuring(!measuring)}
+        className={btn(measuring)}
+      >
+        {svg(<path d="M3 16 16 3l5 5L8 21zM7 12l2 2M10 9l2 2M13 6l2 2" strokeLinejoin="round" />)}
+      </button>
       <div className="my-1 h-px w-6 bg-[#2a2e39]" />
       <button
         type="button"

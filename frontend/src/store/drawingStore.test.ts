@@ -100,3 +100,28 @@ describe('T4.14 undo / redo', () => {
     expect(st().drawings[0]).toEqual(fib('f'));
   });
 });
+
+describe('T6.2 ruler arm flag', () => {
+  it('arming the ruler drops the tool; choosing a tool disarms it; neither touches drawings', () => {
+    st().add(hline('h', 1));
+    const before = { drawings: st().drawings, past: st().past.length, rev: st().rev };
+    st().setTool('trendline');
+    st().setMeasuring(true);
+    expect(st()).toMatchObject({ measuring: true, tool: null });
+    st().setTool('rect');
+    expect(st()).toMatchObject({ measuring: false, tool: 'rect' });
+    st().setMeasuring(true);
+    st().setTool(null);
+    expect(st().measuring).toBe(false);
+    st().setMeasuring(true);
+    st().setMeasuring(false);
+    expect(st()).toMatchObject({ measuring: false, tool: null });
+    expect({ drawings: st().drawings, past: st().past.length, rev: st().rev }).toEqual(before);
+  });
+
+  it('a symbol switch disarms it', () => {
+    st().setMeasuring(true);
+    st().startLoading('BINANCE:ETHUSDT');
+    expect(st().measuring).toBe(false);
+  });
+});

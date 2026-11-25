@@ -165,11 +165,13 @@ export function ChartView() {
             tool: s.tool,
             selectedId: s.selectedId,
             magnet: s.magnet,
+            measuring: s.measuring,
             drawings: s.drawings,
             shapes: drawings.shapes(),
             ...drawings.debug(),
           };
         },
+        measure: () => drawings.measure(),
         timeToX: (time) => drawings.timeToX(time),
         priceToY: (price) => handles.candles.priceToCoordinate(price),
         alerts: () => {
