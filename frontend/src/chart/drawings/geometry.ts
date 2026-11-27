@@ -86,6 +86,10 @@ export function hitTestShape(
     case 'hray':
       if (dist(shape.a, x, y) <= handleTol) return 'a';
       return Math.abs(y - shape.a.y) <= tol && x >= shape.a.x - tol ? 'body' : null;
+    case 'long':
+    case 'short':
+    case 'text':
+      return null;
   }
   const { a, b } = shape;
   if (dist(a, x, y) <= handleTol) return 'a';
@@ -165,6 +169,10 @@ export function moveDrawing(
       return body
         ? { ...d, a: { time: Math.round(d.a.time + delta.dTime), price: d.a.price + delta.dPrice } }
         : { ...d, a: { time: Math.round(to.time), price: to.price } };
+    case 'long':
+    case 'short':
+    case 'text':
+      return d;
     default: {
       const shift = (p: Anchor): Anchor => ({
         time: Math.round(p.time + delta.dTime),

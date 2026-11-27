@@ -238,6 +238,8 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
       } else if (d.type === 'vline') {
         const x = this.timeToX(d.time);
         shape = x === null ? null : { type: 'vline', x };
+      } else if (!('b' in d)) {
+        shape = null;
       } else {
         const a = this.point(d.a);
         const b = this.point(d.b);

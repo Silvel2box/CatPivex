@@ -6,6 +6,7 @@ import { constrainAngle, hitTestAll, magnetSnap, moveDrawing } from './geometry'
 import {
   ANCHOR_COUNT,
   DEFAULT_COLOR,
+  DEFAULT_TEXT_SIZE,
   FIB_WICK_SNAP_PX,
   HANDLE_TOLERANCE,
   HIT_TOLERANCE,
@@ -40,6 +41,9 @@ export function makeDrawing(tool: DrawingType, a: Anchor, b: Anchor, id = newDra
   if (tool === 'hline') return { ...base, type: 'hline', price: a.price };
   if (tool === 'hray') return { ...base, type: 'hray', a };
   if (tool === 'vline') return { ...base, type: 'vline', time: a.time };
+  if (tool === 'long' || tool === 'short')
+    return { ...base, type: tool, a, end: a.time, stop: a.price, target: a.price };
+  if (tool === 'text') return { ...base, type: 'text', a, text: '', size: DEFAULT_TEXT_SIZE };
   return { ...base, type: tool, a, b };
 }
 
