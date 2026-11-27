@@ -13,11 +13,15 @@ import type { Candle } from '../../api/types';
 import { logicalToTime, logicalToX, timeToLogical, xToLogical, type ScaleLike } from './coords';
 import { fibPrices, hitTestAll } from './geometry';
 import { MEASURE_FILL_ALPHA, measureColor, measureLines, measureStats } from './measure';
+import { positionLabels, type PositionLabels } from './position';
 import {
   FIB_FILL_ALPHA,
   FIB_LEVELS,
   HANDLE_TOLERANCE,
   HIT_TOLERANCE,
+  POSITION_FILL_ALPHA,
+  POSITION_STOP_COLOR,
+  POSITION_TARGET_COLOR,
   RECT_FILL_ALPHA,
   type Anchor,
   type Drawing,
@@ -213,6 +217,26 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     return this.y(price);
   }
 
+  pricePerPx(price: number, dy: number): number | null {
+    const y = this.y(price);
+    const p = y === null || dy === 0 ? null : (this.series?.coordinateToPrice(y + dy) ?? null);
+    return p === null ? null : Math.abs(price - p) / Math.abs(dy);
+  }
+
+  intervalSec(): number {
+    return this.getIntervalSec();
+  }
+
+  positions(): { id: string; labels: PositionLabels }[] {
+    const format = (p: number) => this.series?.priceFormatter().format(p) ?? String(p);
+    const out: { id: string; labels: PositionLabels }[] = [];
+    for (const d of this.drawings) {
+      if (d.type === 'long' || d.type === 'short')
+        out.push({ id: d.id, labels: positionLabels(d, format) });
+    }
+    return out;
+  }
+
   private y(price: number): number | null {
     return this.series?.priceToCoordinate(price) ?? null;
   }
@@ -238,6 +262,15 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
       } else if (d.type === 'vline') {
         const x = this.timeToX(d.time);
         shape = x === null ? null : { type: 'vline', x };
+      } else if (d.type === 'long' || d.type === 'short') {
+        const a = this.point(d.a);
+        const x1 = this.timeToX(d.end);
+        const stopY = this.y(d.stop);
+        const targetY = this.y(d.target);
+        shape =
+          a && x1 !== null && stopY !== null && targetY !== null
+            ? { type: d.type, a, x1, stopY, targetY }
+            : null;
       } else if (!('b' in d)) {
         shape = null;
       } else {
@@ -282,6 +315,13 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
       if (d.id !== active) continue;
       if (shape.type === 'vline' && d.type === 'vline') {
         times.push({ coord: shape.x, text: time(d.time), color: d.color });
+      }
+      if ((shape.type === 'long' || shape.type === 'short') && d.type === shape.type) {
+        prices.push({ coord: shape.targetY, text: price(d.target), color: POSITION_TARGET_COLOR });
+        prices.push({ coord: shape.a.y, text: price(d.a.price), color: d.color });
+        prices.push({ coord: shape.stopY, text: price(d.stop), color: POSITION_STOP_COLOR });
+        times.push({ coord: shape.a.x, text: time(d.a.time), color: d.color });
+        times.push({ coord: shape.x1, text: time(d.end), color: d.color });
       }
       if ('b' in shape && 'b' in d) {
         for (const [p, anchor] of [
@@ -393,11 +433,39 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
                 ctx.setLineDash([]);
                 break;
               }
+              case 'long':
+              case 'short': {
+                if (d.type !== shape.type) break;
+                const { a, x1, stopY, targetY } = shape;
+                const w = x1 - a.x;
+                ctx.fillStyle = withAlpha(POSITION_TARGET_COLOR, POSITION_FILL_ALPHA);
+                ctx.fillRect(a.x, Math.min(a.y, targetY), w, Math.abs(targetY - a.y));
+                ctx.fillStyle = withAlpha(POSITION_STOP_COLOR, POSITION_FILL_ALPHA);
+                ctx.fillRect(a.x, Math.min(a.y, stopY), w, Math.abs(stopY - a.y));
+                line(ctx, a.x, a.y, x1, a.y);
+                const labels = positionLabels(d, format);
+                const cx = (a.x + x1) / 2;
+                edgePill(ctx, labels.target, cx, a.y, targetY, POSITION_TARGET_COLOR);
+                edgePill(ctx, labels.stop, cx, a.y, stopY, POSITION_STOP_COLOR);
+                pill(ctx, labels.rr, cx, a.y - PILL_H / 2, d.color);
+                break;
+              }
             }
             // Handles on the selected drawing and on the one under the mouse.
             const marked = d.id === selectedId || d.id === hoveredId;
             const handles =
-              'b' in shape ? [shape.a, shape.b] : shape.type === 'hray' ? [shape.a] : null;
+              'b' in shape
+                ? [shape.a, shape.b]
+                : shape.type === 'hray'
+                  ? [shape.a]
+                  : shape.type === 'long' || shape.type === 'short'
+                    ? [
+                        shape.a,
+                        { x: shape.a.x, y: shape.targetY },
+                        { x: shape.a.x, y: shape.stopY },
+                        { x: shape.x1, y: shape.a.y },
+                      ]
+                    : null;
             if (marked && handles) {
               ctx.lineWidth = 2;
               ctx.strokeStyle = d.color;
@@ -494,6 +562,38 @@ function drawMeasure(
     ctx.fillText(l, cx + lw / 2, cy + MEASURE_PAD_Y + MEASURE_LINE_H * (i + 0.5));
   });
   ctx.restore();
+}
+
+const PILL_H = 18;
+const PILL_PAD_X = 6;
+const PILL_GAP = 3;
+
+function pill(ctx: CanvasRenderingContext2D, text: string, cx: number, top: number, color: string) {
+  ctx.save();
+  ctx.font = LABEL_FONT;
+  const w = ctx.measureText(text).width + 2 * PILL_PAD_X;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.roundRect(cx - w / 2, top, w, PILL_H, 3);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, cx, top + PILL_H / 2);
+  ctx.restore();
+}
+
+function edgePill(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  cx: number,
+  entryY: number,
+  edgeY: number,
+  color: string,
+) {
+  const up = edgeY < entryY;
+  const inside = Math.abs(edgeY - entryY) >= PILL_H * 1.5 + 2 * PILL_GAP;
+  pill(ctx, text, cx, up === inside ? edgeY + PILL_GAP : edgeY - PILL_GAP - PILL_H, color);
 }
 
 function bell(ctx: CanvasRenderingContext2D, cx: number, cy: number, color: string) {

@@ -1,4 +1,5 @@
 import type { Candle } from '../../api/types';
+import { movePosition, positionValid, type PositionDrawing } from './position';
 import {
   FIB_LEVELS,
   type Anchor,
@@ -87,7 +88,14 @@ export function hitTestShape(
       if (dist(shape.a, x, y) <= handleTol) return 'a';
       return Math.abs(y - shape.a.y) <= tol && x >= shape.a.x - tol ? 'body' : null;
     case 'long':
-    case 'short':
+    case 'short': {
+      const { a, x1, stopY, targetY } = shape;
+      if (dist({ x: x1, y: a.y }, x, y) <= handleTol) return 'end';
+      if (dist({ x: a.x, y: stopY }, x, y) <= handleTol) return 'stop';
+      if (dist({ x: a.x, y: targetY }, x, y) <= handleTol) return 'target';
+      if (dist(a, x, y) <= handleTol) return 'a';
+      return distToBox(a.x, stopY, x1, targetY, x, y) <= tol ? 'body' : null;
+    }
     case 'text':
       return null;
   }
@@ -171,6 +179,7 @@ export function moveDrawing(
         : { ...d, a: { time: Math.round(to.time), price: to.price } };
     case 'long':
     case 'short':
+      return movePosition(d, part, delta, to);
     case 'text':
       return d;
     default: {
@@ -241,6 +250,20 @@ function drawingOf(v: unknown): Drawing | null {
       if (typeof v.fill === 'number' && v.fill >= 0 && v.fill <= 1) fib.fill = v.fill;
       if (v.extend === true) fib.extend = true;
       return fib;
+    }
+    case 'long':
+    case 'short': {
+      const a = anchorOf(v.a);
+      if (!a || !finite(v.end) || !finite(v.stop) || !finite(v.target)) return null;
+      const pos: PositionDrawing = {
+        ...base,
+        type,
+        a,
+        end: Math.round(v.end),
+        stop: v.stop,
+        target: v.target,
+      };
+      return positionValid(pos) ? pos : null;
     }
     default:
       return null;

@@ -3,6 +3,7 @@ import type { Candle } from '../../api/types';
 import { newDrawingId, useDrawingStore } from '../../store/drawingStore';
 import type { DrawingsPrimitive } from './DrawingsPrimitive';
 import { constrainAngle, hitTestAll, magnetSnap, moveDrawing } from './geometry';
+import { positionDefaults } from './position';
 import {
   ANCHOR_COUNT,
   DEFAULT_COLOR,
@@ -10,6 +11,7 @@ import {
   FIB_WICK_SNAP_PX,
   HANDLE_TOLERANCE,
   HIT_TOLERANCE,
+  POSITION_RISK_PX,
   type Anchor,
   type Drawing,
   type DrawingType,
@@ -36,13 +38,24 @@ const DRAG_FINISH_PX = 5;
 export const MAGNET_RADIUS_PX = 10;
 const GHOST_COLOR = '#2962ff';
 
-export function makeDrawing(tool: DrawingType, a: Anchor, b: Anchor, id = newDrawingId()): Drawing {
+export function makeDrawing(
+  tool: DrawingType,
+  a: Anchor,
+  b: Anchor,
+  id = newDrawingId(),
+  scale = { pricePerPx: 0, intervalSec: 0 },
+): Drawing {
   const base = { id, color: DEFAULT_COLOR[tool], width: 1 as const };
   if (tool === 'hline') return { ...base, type: 'hline', price: a.price };
   if (tool === 'hray') return { ...base, type: 'hray', a };
   if (tool === 'vline') return { ...base, type: 'vline', time: a.time };
   if (tool === 'long' || tool === 'short')
-    return { ...base, type: tool, a, end: a.time, stop: a.price, target: a.price };
+    return {
+      ...base,
+      type: tool,
+      a,
+      ...positionDefaults(tool, a, scale.pricePerPx, scale.intervalSec),
+    };
   if (tool === 'text') return { ...base, type: 'text', a, text: '', size: DEFAULT_TEXT_SIZE };
   return { ...base, type: tool, a, b };
 }
@@ -192,7 +205,12 @@ export class DrawingController {
       if (this.pending) {
         this.finish(a);
       } else if (ANCHOR_COUNT[store.tool] === 1) {
-        store.add(makeDrawing(store.tool, a, a));
+        const dy = store.tool === 'short' ? -POSITION_RISK_PX : POSITION_RISK_PX;
+        const scale = {
+          pricePerPx: this.primitive.pricePerPx(a.price, dy) ?? 0,
+          intervalSec: this.primitive.intervalSec(),
+        };
+        store.add(makeDrawing(store.tool, a, a, undefined, scale));
       } else {
         this.pending = { tool: store.tool, a, downAt: p };
         this.preview = makeDrawing(store.tool, a, a, 'preview');

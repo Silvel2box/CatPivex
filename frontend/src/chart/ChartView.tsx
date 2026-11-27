@@ -179,6 +179,7 @@ export function ChartView() {
           };
         },
         measure: () => drawings.measure(),
+        positions: () => drawings.positions(),
         timeToX: (time) => drawings.timeToX(time),
         priceToY: (price) => handles.candles.priceToCoordinate(price),
         alerts: () => {
