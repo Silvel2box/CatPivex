@@ -80,6 +80,7 @@ export interface CatpivexDebug {
     b: { time: number; price: number };
     lines: string[];
   } | null;
+  positions(): { id: string; labels: { target: string; stop: string; rr: string } }[];
   /** x for any time (interpolated between bars), pane px; null without data. */
   timeToX(time: number): number | null;
   /** y of a price on the candle pane, pane px. */
