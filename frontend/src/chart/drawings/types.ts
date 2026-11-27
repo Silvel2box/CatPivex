@@ -134,7 +134,7 @@ export type PixelShape =
   | { type: 'trendline'; a: Point; b: Point }
   | { type: 'rect'; a: Point; b: Point }
   /**
-   * levelYs[i] is the y of FIB_LEVELS[i]; lines span min(a.x,b.x)..max(a.x,b.x), or to
+   * levelYs[i] is the y of fibLevelsOf(d)[i]; lines span min(a.x,b.x)..max(a.x,b.x), or to
    * `extendTo` (the pane's right edge) when the fib is extended.
    */
   | { type: 'fib'; a: Point; b: Point; levelYs: number[]; extendTo?: number }

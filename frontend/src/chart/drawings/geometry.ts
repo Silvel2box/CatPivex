@@ -1,6 +1,11 @@
 import type { Candle } from '../../api/types';
 import {
+  FIB_CUSTOM_COLOR,
+  FIB_EXTRA_LEVELS,
+  FIB_LEVEL_MAX,
+  FIB_LEVEL_MIN,
   FIB_LEVELS,
+  FIB_MAX_LEVELS,
   type Anchor,
   type Drawing,
   type DrawingWidth,
@@ -143,10 +148,67 @@ export function constrainAngle(from: Point, to: Point): Point {
   return { x: from.x + len * cos, y: from.y + len * sin };
 }
 
-/** Fib level prices, in FIB_LEVELS order (see FIB_LEVELS for the formula). */
-export function fibPrices(a: Anchor, b: Anchor): number[] {
+const DEFAULT_FIB_LEVELS: readonly number[] = FIB_LEVELS.map(({ level }) => level);
+
+/** Fib level prices, in `levels` order (see FIB_LEVELS for the formula). */
+export function fibPrices(
+  a: Anchor,
+  b: Anchor,
+  levels: readonly number[] = DEFAULT_FIB_LEVELS,
+): number[] {
   // b + (a - b) * level, written as a lerp so level 0 / 1 give exactly b / a (no float drift).
-  return FIB_LEVELS.map(({ level }) => b.price * (1 - level) + a.price * level);
+  return levels.map((level) => b.price * (1 - level) + a.price * level);
+}
+
+const FIB_PRESET_COLORS = new Map(
+  [...FIB_LEVELS, ...FIB_EXTRA_LEVELS].map(({ level, color }) => [level, color]),
+);
+
+export function fibLevelColor(level: number): string {
+  return FIB_PRESET_COLORS.get(level) ?? FIB_CUSTOM_COLOR;
+}
+
+export function fibLevelsOf(d: { levels?: readonly number[] }): { level: number; color: string }[] {
+  return [...(d.levels ?? DEFAULT_FIB_LEVELS)]
+    .sort((x, y) => x - y)
+    .map((level) => ({ level, color: fibLevelColor(level) }));
+}
+
+export function fibBands(
+  levels: readonly { color: string }[],
+  levelYs: readonly number[],
+): { y: number; h: number; color: string }[] {
+  const bands: { y: number; h: number; color: string }[] = [];
+  for (let i = 0; i + 1 < levels.length; i++) {
+    const y0 = levelYs[i];
+    const y1 = levelYs[i + 1];
+    bands.push({ y: Math.min(y0, y1), h: Math.abs(y1 - y0), color: levels[i + 1].color });
+  }
+  return bands;
+}
+
+export function fibLevelValue(v: unknown): number | null {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+  const level = Math.round(v * 1e4) / 1e4 + 0;
+  return level >= FIB_LEVEL_MIN && level <= FIB_LEVEL_MAX ? level : null;
+}
+
+export function normalizeFibLevels(raw: unknown): number[] | null {
+  if (!Array.isArray(raw)) return null;
+  const levels = new Set<number>();
+  for (const v of raw) {
+    const level = fibLevelValue(v);
+    if (level !== null) levels.add(level);
+  }
+  if (levels.size === 0) return null;
+  return [...levels].sort((x, y) => x - y).slice(0, FIB_MAX_LEVELS);
+}
+
+export function isDefaultFibLevels(levels: readonly number[]): boolean {
+  return (
+    levels.length === DEFAULT_FIB_LEVELS.length &&
+    levels.every((level, i) => level === DEFAULT_FIB_LEVELS[i])
+  );
 }
 
 /**
@@ -240,6 +302,8 @@ function drawingOf(v: unknown): Drawing | null {
       const fib: Drawing = { ...base, type, a, b };
       if (typeof v.fill === 'number' && v.fill >= 0 && v.fill <= 1) fib.fill = v.fill;
       if (v.extend === true) fib.extend = true;
+      const levels = normalizeFibLevels(v.levels);
+      if (levels && !isDefaultFibLevels(levels)) fib.levels = levels;
       return fib;
     }
     default:

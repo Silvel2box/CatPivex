@@ -11,11 +11,10 @@ import type {
 } from 'lightweight-charts';
 import type { Candle } from '../../api/types';
 import { logicalToTime, logicalToX, timeToLogical, xToLogical, type ScaleLike } from './coords';
-import { fibPrices, hitTestAll } from './geometry';
+import { fibBands, fibLevelsOf, fibPrices, hitTestAll } from './geometry';
 import { MEASURE_FILL_ALPHA, measureColor, measureLines, measureStats } from './measure';
 import {
   FIB_FILL_ALPHA,
-  FIB_LEVELS,
   HANDLE_TOLERANCE,
   HIT_TOLERANCE,
   RECT_FILL_ALPHA,
@@ -245,7 +244,8 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
         const b = this.point(d.b);
         if (a && b) {
           if (d.type === 'fib') {
-            const ys = fibPrices(d.a, d.b).map((p) => this.y(p));
+            const levels = fibLevelsOf(d).map(({ level }) => level);
+            const ys = fibPrices(d.a, d.b, levels).map((p) => this.y(p));
             if (ys.every((v) => v !== null)) {
               shape = { type: 'fib', a, b, levelYs: ys as number[] };
               if (d.extend) shape.extendTo = this.chart.timeScale().width();
@@ -368,17 +368,20 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
                 if (d.type !== 'fib') break;
                 const x0 = Math.min(shape.a.x, shape.b.x);
                 const x1 = shape.extendTo ?? Math.max(shape.a.x, shape.b.x);
-                const prices = fibPrices(d.a, d.b);
+                const levels = fibLevelsOf(d);
+                const prices = fibPrices(
+                  d.a,
+                  d.b,
+                  levels.map(({ level }) => level),
+                );
                 // Filled bands between levels (each in the colour of its upper level).
-                for (let i = 0; i + 1 < FIB_LEVELS.length; i++) {
-                  const y0 = shape.levelYs[i];
-                  const y1 = shape.levelYs[i + 1];
-                  ctx.fillStyle = withAlpha(FIB_LEVELS[i + 1].color, d.fill ?? FIB_FILL_ALPHA);
-                  ctx.fillRect(x0, Math.min(y0, y1), x1 - x0, Math.abs(y1 - y0));
+                for (const band of fibBands(levels, shape.levelYs)) {
+                  ctx.fillStyle = withAlpha(band.color, d.fill ?? FIB_FILL_ALPHA);
+                  ctx.fillRect(x0, band.y, x1 - x0, band.h);
                 }
                 ctx.font = LABEL_FONT;
                 ctx.textBaseline = 'bottom';
-                FIB_LEVELS.forEach(({ level, color }, i) => {
+                levels.forEach(({ level, color }, i) => {
                   const y = shape.levelYs[i];
                   ctx.strokeStyle = color;
                   ctx.lineWidth = d.width;

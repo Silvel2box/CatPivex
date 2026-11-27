@@ -5,6 +5,7 @@ import { addLineAlert, alertForLine, useAlertStore } from '../store/alertStore';
 import { useDrawingStore } from '../store/drawingStore';
 import { btn, svg } from './DrawingToolbar';
 import { barPosition, type Pos, type Size } from './drawingBarLogic';
+import { FibLevelsPanel } from './FibLevelsPanel';
 
 const WIDTHS: DrawingWidth[] = [1, 2, 3, 4];
 
@@ -147,6 +148,7 @@ export function DrawingBar({ areaRef }: { areaRef: RefObject<HTMLElement | null>
           >
             {svg(<path d="M4 8h10M4 12h16M4 16h10M17 9l3 3-3 3" />)}
           </button>
+          <FibLevelsPanel key={selected.id} fib={selected} />
         </>
       )}
       {level !== null &&
