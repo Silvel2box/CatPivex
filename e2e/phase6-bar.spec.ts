@@ -20,8 +20,6 @@ type W = {
 };
 
 const BTC = 'BINANCE:BTCUSDT';
-const SHOT =
-  'C:/Users/work/AppData/Local/Temp/claude/6d9386240e246e2f/7aca7e94-1e40-4733-a71c-2fbabc7cebf7/scratchpad/p6c-bar.png';
 
 const draws = (page: Page) => page.evaluate(() => (window as unknown as W).__catpivex.drawings());
 const savedLayout = async (page: Page) =>
@@ -205,7 +203,7 @@ test('T6.3b bar on a selected fib (screenshot)', async ({ page }) => {
   for (const id of ['drawing-fill', 'drawing-reverse', 'drawing-extend', 'drawing-delete'])
     await expect(bar.getByTestId(id)).toBeVisible();
   await expect(bar.getByTestId('bar-add-alert')).toHaveCount(0); // a fib has no alert level
-  await page.screenshot({ path: SHOT });
+  await page.screenshot({ path: test.info().outputPath('p6c-bar.png') });
 });
 
 test('T6.4 stay in drawing mode: the tool stays after each drawing, Esc leaves it, the setting survives reload', async ({

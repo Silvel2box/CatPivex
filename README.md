@@ -115,6 +115,11 @@ Test IDs (T1.1, T1.2, …) in test names match the test list in the project trac
 - ATR follows TA-Lib's start (the first value is one bar later than TradingView's); the values match after the first few dozen bars.
 - Legend: hover an indicator's name for 👁 hide/show, ⚙ settings (opens the Indicators panel at that indicator) and × remove. A hidden indicator stays in the legend, dimmed.
 
+### Phase 8: drawing tools, round 3 ✅ (2026-11-27)
+- **Long / Short position**: one click places it with the stop 40 px away and the target at 2R, 20 bars wide. Drag the target, stop, entry or right-edge handles; the labels show target and stop price with %, and the risk/reward ratio. The stop and target can't cross the entry.
+- **Fibonacci levels**: select a fib, then **Levels** in the floating bar to tick which levels show (0–1 plus 1.272, 1.618, 2, 2.618, 3.618, 4.236) or type your own (−5 to 10). Saved per fib.
+- **Text**: pick the T tool, click and type. Enter saves, Shift+Enter adds a line, Esc cancels. Double-click a text (or the pencil in the floating bar) to edit it; clear it to delete. Colour and font size are in the floating bar.
+
 ## Terms of use
 
 CatPivex is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE.md).

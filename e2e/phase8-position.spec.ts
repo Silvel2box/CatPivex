@@ -39,8 +39,6 @@ type W = {
 };
 
 const BTC = 'BINANCE:BTCUSDT';
-const SHOT =
-  'C:/Users/work/AppData/Local/Temp/claude/6d9386240e246e2f/7aca7e94-1e40-4733-a71c-2fbabc7cebf7/scratchpad/p8a-position.png';
 
 const draws = (page: Page) => page.evaluate(() => (window as unknown as W).__catpivex.drawings());
 const labels = async (page: Page, id: string) =>
@@ -119,7 +117,7 @@ test('T8.A1 long position: one click, 2R defaults, target drag changes R:R, stop
   expect(sh.targetY).toBeLessThan(sh.a.y);
   expect(sh.stopY).toBeGreaterThan(sh.a.y);
   expect(sh.x1).toBeGreaterThan(sh.a.x);
-  await page.screenshot({ path: SHOT });
+  await page.screenshot({ path: test.info().outputPath('p8a-position.png') });
 
   await drag(page, { x: box.x + sh.a.x, y: box.y + sh.targetY }, 0, -40);
   const t = (await draws(page)).drawings[0]!;
