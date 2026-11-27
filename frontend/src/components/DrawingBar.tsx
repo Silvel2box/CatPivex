@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent, type RefObject } from 'react';
-import { alertLevel } from '../chart/drawings/geometry';
+import { canCarryAlert } from '../chart/drawings/geometry';
 import {
   FIB_FILL_ALPHA,
   FIB_FILL_OPTIONS,
@@ -69,8 +69,8 @@ export function DrawingBar({ areaRef }: { areaRef: RefObject<HTMLElement | null>
     setDragPos(null);
   };
 
-  const level = alertLevel(selected);
-  const lineAlert = level !== null && symbol ? alertForLine(alerts, symbol, selected.id) : null;
+  const alertable = canCarryAlert(selected);
+  const lineAlert = alertable && symbol ? alertForLine(alerts, symbol, selected.id) : null;
 
   return (
     <div
@@ -185,7 +185,7 @@ export function DrawingBar({ areaRef }: { areaRef: RefObject<HTMLElement | null>
           <FibLevelsPanel key={selected.id} fib={selected} />
         </>
       )}
-      {level !== null &&
+      {alertable &&
         symbol &&
         (lineAlert ? (
           <button
@@ -204,7 +204,7 @@ export function DrawingBar({ areaRef }: { areaRef: RefObject<HTMLElement | null>
             type="button"
             data-testid="bar-add-alert"
             title="Add alert"
-            onClick={() => addLineAlert(symbol, selected.id, level)}
+            onClick={() => addLineAlert(symbol, selected)}
             className={btn(false)}
           >
             {svg(<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5h4" />)}

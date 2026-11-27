@@ -94,9 +94,10 @@ export interface LayoutResponse {
 // GET /api/alerts -> Alert[] · POST body AlertCreate -> Alert · PATCH /api/alerts/{id} body
 // AlertUpdate -> Alert · DELETE -> 204 · GET /api/alerts/events?after=<id>&limit= -> AlertEvent[]
 // newest first, id > after (poll it for browser notifications; also the history).
-// Linked alert (drawing_id = an hline or hray of the same symbol): price follows the line via
-// PUT /api/drawings, deleting the line deletes the alert, PATCH price -> 422. Flush pending
-// drawing saves before POSTing one.
+// Linked alert (drawing_id = an hline, hray or non-vertical trendline of the same symbol): price
+// follows the line via PUT /api/drawings, deleting the line deletes the alert, PATCH price -> 422.
+// Trendline: the line through a and b extended both ways; price = its level at the latest drawings
+// save or check. Flush pending drawing saves before POSTing one.
 export type AlertCondition = 'crosses' | 'crosses_above' | 'crosses_below' | 'gte' | 'lte';
 export const ALERT_CONDITIONS: readonly AlertCondition[] = [
   'crosses',
@@ -141,7 +142,7 @@ export interface AlertEvent {
   alert_id: number;
   symbol: string;
   condition: AlertCondition;
-  /** alert price at the time of the trigger */
+  /** alert price at the trigger (trendline: the line at the check time) */
   level: number;
   /** latest close at the check that triggered */
   price: number;

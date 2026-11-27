@@ -264,9 +264,22 @@ export function moveDrawing(
 }
 
 /** Price an alert on this drawing follows; null = the drawing cannot carry an alert. */
-export function alertLevel(d: Drawing): number | null {
+export function alertLevel(d: Drawing, time: number): number | null {
   if (d.type === 'hline') return d.price;
-  return d.type === 'hray' ? d.a.price : null;
+  if (d.type === 'hray') return d.a.price;
+  if (d.type !== 'trendline' || d.a.time === d.b.time) return null;
+  const level = linePriceAt(d.a, d.b, time);
+  return Number.isFinite(level) && level > 0 ? level : null;
+}
+
+export function linePriceAt(a: Anchor, b: Anchor, time: number): number {
+  return a.price + ((b.price - a.price) * (time - a.time)) / (b.time - a.time);
+}
+
+export function canCarryAlert(d: Drawing): boolean {
+  return (
+    d.type === 'hline' || d.type === 'hray' || (d.type === 'trendline' && d.a.time !== d.b.time)
+  );
 }
 
 // ---- Sanitize ----------------------------------------------------------------------------------

@@ -14,6 +14,8 @@ from app.services.alerts import (
     FETCH_BARS,
     check_interval,
     format_message,
+    line_level,
+    linkable_lines,
     next_armed,
     should_fire,
     window_extremes,
@@ -74,30 +76,47 @@ class AlertChecker:
         bars = fetch_bars(self.candles, symbol)
         newest = bars[-1]
         now = int(self.clock())
+        lines = None
         events = []
         for st in states:
             a = st.alert
             if st.base_time is not None and newest.time < st.base_time:
                 continue  # source went back in time; keep the newer baseline
+            level, base_level, trend = a.price, a.price, False
+            if a.drawing_id is not None:
+                if lines is None:
+                    lines = linkable_lines(self.db.get_drawings(symbol))
+                line = lines.get(a.drawing_id)
+                if line is None:
+                    continue
+                if line.get("type") == "trendline":
+                    trend = True
+                    level = line_level(line, now)
+                    base_time = now if st.base_time is None else st.base_time
+                    base_level = line_level(line, base_time)
+                    if level is None or base_level is None:
+                        continue
+            new_price = level if level != a.price else None
             high, low = window_extremes(
-                bars, st.base_time, st.base_high, st.base_low, st.base_close
+                bars, st.base_time, st.base_high, st.base_low, st.base_close, not trend
             )
-            fired = should_fire(a.condition, a.price, high, low, st.base_close, st.armed)
-            armed = next_armed(a.condition, a.price, newest.close, st.armed, fired)
+            fired = should_fire(a.condition, level, high, low, st.base_close, st.armed, base_level)
+            armed = next_armed(a.condition, level, newest.close, st.armed, fired)
             if not fired:
-                self.db.save_check(a.id, newest, armed)
+                self.db.save_check(a.id, newest, armed, new_price)
                 continue
-            message = format_message(symbol, a.condition, a.price, newest.close, now, a.note)
+            message = format_message(symbol, a.condition, level, newest.close, now, a.note, trend)
             deliveries = dispatch(self.notifiers, message)
             event = self.db.save_trigger(
                 a.id,
                 newest,
                 armed,
                 disable=not a.repeat,
+                price=new_price,
                 event={
                     "symbol": symbol,
                     "condition": a.condition,
-                    "level": a.price,
+                    "level": level,
                     "price": newest.close,
                     "time": now,
                     "message": message,

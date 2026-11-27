@@ -6,7 +6,7 @@ from app.db import Database
 from app.errors import ApiError
 from app.models import Alert, AlertCreate, AlertEvent, AlertUpdate, Candle, JsonObject
 from app.services.alert_checks import fetch_bars
-from app.services.alerts import hline_prices
+from app.services.alerts import line_levels
 
 log = logging.getLogger(__name__)
 
@@ -28,9 +28,9 @@ def _get(db: Database, alert_id: int) -> Alert:
     return alert
 
 
-def sync_linked_alerts(db: Database, symbol: str, drawings: list[JsonObject]) -> None:
-    """Linked alerts follow their horizontal line or ray: moved -> new price, gone -> deleted."""
-    lines = hline_prices(drawings)
+def sync_linked_alerts(db: Database, symbol: str, drawings: list[JsonObject], now: int) -> None:
+    """Linked alerts follow their line: moved -> its level at `now`, gone -> deleted."""
+    lines = line_levels(drawings, now)
     for alert in db.list_alerts(symbol, linked_only=True):
         if alert.drawing_id not in lines:
             db.delete_alert(alert.id)
@@ -50,16 +50,16 @@ def create_alert(request: Request, body: AlertCreate) -> Alert:
     db: Database = request.app.state.db
     symbol = request.app.state.registry.resolve(body.symbol)[1]
     body = body.model_copy(update={"symbol": symbol})
+    now = int(request.app.state.clock())
     if body.drawing_id is not None:
-        price = hline_prices(db.get_drawings(symbol)).get(body.drawing_id)
+        price = line_levels(db.get_drawings(symbol), now).get(body.drawing_id)
         if price is None:
             raise ApiError(
                 "validation_error",
-                f"No horizontal line or ray {body.drawing_id!r} with a valid price"
+                f"No horizontal line, ray or trend line {body.drawing_id!r} with a valid price"
                 f" in {symbol} drawings",
             )
         body = body.model_copy(update={"price": price})
-    now = int(request.app.state.clock())
     return db.create_alert(body, now, _baseline(request, symbol))
 
 
@@ -78,9 +78,7 @@ def update_alert(request: Request, alert_id: int, body: AlertUpdate) -> Alert:
     alert = _get(db, alert_id)
     fields = body.model_dump(exclude_none=True)
     if "price" in fields and alert.drawing_id is not None:
-        raise ApiError(
-            "validation_error", "This alert follows a horizontal line or ray: move it instead"
-        )
+        raise ApiError("validation_error", "This alert follows a line: move the line instead")
     rebase = fields.get("enabled") is True and not alert.enabled
     base = _baseline(request, alert.symbol) if rebase else None
     updated = db.update_alert(alert_id, fields, rebase=rebase, base=base)

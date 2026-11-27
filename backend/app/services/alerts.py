@@ -33,11 +33,14 @@ def window_extremes(
     base_high: float | None,
     base_low: float | None,
     base_close: float | None,
+    include_base_close: bool = True,
 ) -> tuple[float, float]:
     newest = candles[-1].close
     if base_time is None or base_close is None:
         return newest, newest
-    high, low = max(base_close, newest), min(base_close, newest)
+    high, low = newest, newest
+    if include_base_close:
+        high, low = max(base_close, newest), min(base_close, newest)
     for k in candles:
         if k.time > base_time:
             high, low = max(high, k.high), min(low, k.low)
@@ -56,9 +59,11 @@ def should_fire(
     low: float,
     base_close: float | None,
     armed: bool,
+    base_level: float | None = None,
 ) -> bool:
-    above = base_close is not None and base_close < level <= high
-    below = base_close is not None and base_close > level >= low
+    ref = level if base_level is None else base_level
+    above = base_close is not None and base_close < ref and level <= high
+    below = base_close is not None and base_close > ref and level >= low
     if condition == "crosses_above":
         return above
     if condition == "crosses_below":
@@ -95,26 +100,64 @@ def format_price(value: float) -> str:
 
 
 def format_message(
-    symbol: str, condition: str, level: float, price: float, time: int, note: str
+    symbol: str,
+    condition: str,
+    level: float,
+    price: float,
+    time: int,
+    note: str,
+    trend: bool = False,
 ) -> str:
     t = datetime.fromtimestamp(time, THAI_TZ)
     when = f"{t.day} {MONTHS[t.month - 1]} {t:%H:%M}"
+    line = "trend line " if trend else ""
     text = (
-        f"🔔 {symbol} {CONDITION_TEXT[condition]} {format_price(level)}"
+        f"🔔 {symbol} {CONDITION_TEXT[condition]} {line}{format_price(level)}"
         f" — now {format_price(price)} · {when} (Thai time)"
     )
     return f"{text}\n{note}" if note.strip() else text
 
 
-def hline_prices(drawings: list[dict[str, Any]]) -> dict[str, float | None]:
-    """id -> price of every 'hline' / 'hray' (None when it is not a positive number)."""
-    out: dict[str, float | None] = {}
-    for d in drawings:
-        kind = d.get("type")
-        if kind not in ("hline", "hray") or not isinstance(d.get("id"), str):
-            continue
+LINE_TYPES = ("hline", "hray", "trendline")
+
+
+def _number(v: Any) -> float | None:
+    if not isinstance(v, int | float) or isinstance(v, bool):
+        return None
+    try:
+        f = float(v)
+    except OverflowError:
+        return None
+    return f if math.isfinite(f) else None
+
+
+def _anchor(v: Any) -> tuple[float, float] | None:
+    if not isinstance(v, dict):
+        return None
+    t, p = _number(v.get("time")), _number(v.get("price"))
+    return None if t is None or p is None else (t, p)
+
+
+def linkable_lines(drawings: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {
+        d["id"]: d for d in drawings if d.get("type") in LINE_TYPES and isinstance(d.get("id"), str)
+    }
+
+
+def line_level(d: dict[str, Any], at: float) -> float | None:
+    kind = d.get("type")
+    level: float | None = None
+    if kind == "hline":
+        level = _number(d.get("price"))
+    elif kind == "hray":
         a = d.get("a")
-        p = d.get("price") if kind == "hline" else a.get("price") if isinstance(a, dict) else None
-        ok = isinstance(p, int | float) and not isinstance(p, bool) and math.isfinite(p) and p > 0
-        out[d["id"]] = float(p) if ok else None
-    return out
+        level = _number(a.get("price")) if isinstance(a, dict) else None
+    elif kind == "trendline":
+        a, b = _anchor(d.get("a")), _anchor(d.get("b"))
+        if a is not None and b is not None and a[0] != b[0]:
+            level = a[1] + (b[1] - a[1]) * (at - a[0]) / (b[0] - a[0])
+    return level if level is not None and math.isfinite(level) and level > 0 else None
+
+
+def line_levels(drawings: list[dict[str, Any]], at: float) -> dict[str, float | None]:
+    return {i: line_level(d, at) for i, d in linkable_lines(drawings).items()}

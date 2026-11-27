@@ -39,8 +39,12 @@ Price alerts (rules: project task list, Phase 5):
   GET /api/alerts -> list[Alert] · POST /api/alerts AlertCreate -> Alert 201
   PATCH /api/alerts/{id} AlertUpdate -> Alert · DELETE /api/alerts/{id} -> 204 (404 not_found)
   GET /api/alerts/events?after=<event id>&limit=50 (1..500) -> list[AlertEvent], newest first
-  drawing_id = an 'hline' or 'hray' of the symbol: price follows it, deleted with it;
-  PATCH price -> 422.
+  drawing_id = an 'hline', 'hray' or 'trendline' of the symbol: price follows it, deleted with
+  it; PATCH price -> 422. A trendline (not vertical) is the straight line through a and b
+  (linear in time and price), extended both ways; its level is taken at "now" on create, on
+  every PUT of the drawings and by each check (which also stores it as the price when it
+  changed). A crossing compares the close's side of the line at the baseline bar's time with
+  the bar range against the line now.
 
 Test feed (CATPIVEX_TEST_FEED=1 only): exchange TEST (1m, in memory) +
   PUT /api/test/price {"symbol": "TEST:FOO", "price": 100.0} -> 204 (moves the current 1m bar).
@@ -169,10 +173,10 @@ class Alert(BaseModel):
     id: int
     symbol: str  # canonical, e.g. "BINANCE:BTCUSDT"
     condition: AlertCondition
-    price: float  # the level; for a linked alert, kept equal to its line's price
+    price: float  # the level; linked: its line's price (trendline: its latest level)
     repeat: bool  # False = disable after the first trigger
     enabled: bool
-    drawing_id: str | None  # the 'hline' / 'hray' this alert follows, None = standalone
+    drawing_id: str | None  # the 'hline' / 'hray' / 'trendline' it follows, None = standalone
     note: str
     created_at: int  # unix s
     last_triggered_at: int | None
@@ -202,7 +206,7 @@ class AlertEvent(BaseModel):
     alert_id: int  # the alert may have been deleted since
     symbol: str
     condition: AlertCondition
-    level: float  # alert price at the time of the trigger
+    level: float  # alert price at the trigger (trendline: the line at the check time)
     price: float  # latest close at the check that triggered
     time: int  # unix s of the check
     message: str  # the text sent to Telegram/LINE

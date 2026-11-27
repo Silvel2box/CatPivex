@@ -35,7 +35,7 @@ def put_drawings(request: Request, symbol: str, body: DrawingsBody) -> DrawingsR
     symbol = _canonical(request, symbol)
     db = request.app.state.db
     _store(lambda: db.set_drawings(symbol, body.drawings))
-    sync_linked_alerts(db, symbol, body.drawings)
+    sync_linked_alerts(db, symbol, body.drawings, int(request.app.state.clock()))
     return DrawingsResponse(symbol=symbol, drawings=db.get_drawings(symbol))
 
 

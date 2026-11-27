@@ -341,6 +341,70 @@ def test_t5_5_patch_price_of_linked_alert_is_rejected(client):
     assert r.status_code == 200 and r.json()["price"] == 101.5
 
 
+def trend(a_price, b_price, a_time=NOW - 1000, b_time=NOW - 500, tid="t1"):
+    return {
+        "id": tid,
+        "type": "trendline",
+        "color": "#2962ff",
+        "width": 1,
+        "a": {"time": a_time, "price": a_price},
+        "b": {"time": b_time, "price": b_price},
+    }
+
+
+def test_d11_linked_create_on_a_trend_line_takes_its_level_now(client):
+    put_drawings(client, [trend(100, 105), trend(100, 105, b_time=NOW + 1000, tid="t2")])
+    r = post(client, drawing_id="t1", price=999)
+    assert r.status_code == 201, r.text
+    assert (r.json()["price"], r.json()["drawing_id"]) == (pytest.approx(110), "t1")
+    assert post(client, drawing_id="t2").json()["price"] == pytest.approx(102.5)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        trend(100, 105, b_time=NOW - 1000),
+        trend(100, 50),
+        trend(100, 0.0001),
+        {**trend(100, 105), "b": None},
+        {**trend(100, 105), "a": {"time": "x", "price": 1}},
+    ],
+)
+def test_d11_linked_create_rejects_a_vertical_or_negative_trend_line(client, line):
+    put_drawings(client, [line])
+    r = post(client, drawing_id="t1")
+    assert_error(r, 422, "validation_error")
+    assert "trend line" in r.json()["error"]["message"]
+    assert client.get("/api/alerts").json() == []
+
+
+def test_d11_put_drawings_syncs_trend_line_alerts(client):
+    put_drawings(client, [trend(100, 105), LINES[0]])
+    t1 = post(client, drawing_id="t1").json()
+    h1 = post(client, drawing_id="h1").json()
+
+    put_drawings(client, [trend(200, 190), LINES[0]])
+    got = {a["id"]: a["price"] for a in client.get("/api/alerts").json()}
+    assert got == {t1["id"]: pytest.approx(180), h1["id"]: 101.5}
+
+    put_drawings(client, [trend(200, 190, b_time=NOW - 1000), LINES[0]])
+    put_drawings(client, [trend(200, 100), LINES[0]])
+    got = {a["id"]: a["price"] for a in client.get("/api/alerts").json()}
+    assert got == {t1["id"]: pytest.approx(180), h1["id"]: 101.5}
+
+    put_drawings(client, [{**trend(200, 190), "type": "rect"}, LINES[0]])
+    assert [a["id"] for a in client.get("/api/alerts").json()] == [h1["id"]]
+
+
+def test_d11_patch_price_of_a_trend_line_alert_is_rejected(client):
+    put_drawings(client, [trend(100, 105)])
+    a = post(client, drawing_id="t1").json()
+    r = client.patch(f"/api/alerts/{a['id']}", json={"price": 5})
+    assert_error(r, 422, "validation_error")
+    assert "line" in r.json()["error"]["message"]
+    assert client.get("/api/alerts").json() == [a]
+
+
 # --- test feed / scheduler wiring -----------------------------------------------------------
 
 

@@ -2,8 +2,9 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ALERT_CONDITIONS, MAX_ALERT_NOTE, type Alert } from '../api/types';
 import { chartLastPrice } from '../chart/lastPrice';
 import { requestAlertPermission } from '../realtime/alertNotify';
-import { useAlertStore, type AlertEditing } from '../store/alertStore';
+import { sameSymbol, useAlertStore, type AlertEditing } from '../store/alertStore';
 import { useChartStore } from '../store/chartStore';
+import { useDrawingStore } from '../store/drawingStore';
 import {
   CONDITION_LABELS,
   deliveryStatus,
@@ -172,6 +173,13 @@ function AlertForm({
 
 function AlertRow({ alert }: { alert: Alert }) {
   const { update, remove, setEditing } = useAlertStore.getState();
+  const trend = useDrawingStore(
+    (s) =>
+      alert.drawing_id !== null &&
+      s.symbol !== null &&
+      sameSymbol(s.symbol, alert.symbol) &&
+      s.drawings.some((d) => d.id === alert.drawing_id && d.type === 'trendline'),
+  );
   return (
     <li
       data-testid="alert-row"
@@ -184,8 +192,13 @@ function AlertRow({ alert }: { alert: Alert }) {
           <span data-testid="alert-row-symbol">{alert.symbol}</span>{' '}
           <span data-testid="alert-row-condition" className="text-[#787b86]">
             {CONDITION_LABELS[alert.condition]}
+            {trend && ' trend line'}
           </span>{' '}
-          <span data-testid="alert-row-price" className="tabular-nums">
+          <span
+            data-testid="alert-row-price"
+            className="tabular-nums"
+            title={trend ? 'Level of the trend line at the last check' : undefined}
+          >
             {formatAlertPrice(alert.price)}
           </span>
         </span>
@@ -224,7 +237,7 @@ function AlertRow({ alert }: { alert: Alert }) {
             data-testid="alert-linked-badge"
             className="rounded border border-[#5b8cff]/50 px-1 text-[#5b8cff]"
           >
-            linked to line
+            {trend ? 'linked to trend line' : 'linked to line'}
           </span>
         )}
         {alert.note && (

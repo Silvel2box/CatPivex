@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { alertLevel } from '../chart/drawings/geometry';
+import { canCarryAlert } from '../chart/drawings/geometry';
 import { addLineAlert, alertForLine, useAlertStore } from '../store/alertStore';
 import { useDrawingStore } from '../store/drawingStore';
 
@@ -29,8 +29,8 @@ export function DrawingContextMenu() {
     fn();
     closeMenu();
   };
-  const level = alertLevel(drawing);
-  const lineAlert = level !== null && symbol ? alertForLine(alerts, symbol, drawing.id) : null;
+  const alertable = canCarryAlert(drawing);
+  const lineAlert = alertable && symbol ? alertForLine(alerts, symbol, drawing.id) : null;
 
   return (
     <div
@@ -66,7 +66,7 @@ export function DrawingContextMenu() {
           <div className="my-1 h-px bg-[#2a2e39]" />
         </>
       )}
-      {level !== null && symbol && (
+      {alertable && symbol && (
         <>
           {lineAlert ? (
             <>
@@ -97,7 +97,7 @@ export function DrawingContextMenu() {
               role="menuitem"
               data-testid="menu-add-alert"
               className={item}
-              onClick={run(() => addLineAlert(symbol, drawing.id, level))}
+              onClick={run(() => addLineAlert(symbol, drawing))}
             >
               Add alert
             </button>
