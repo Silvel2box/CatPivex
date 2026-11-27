@@ -17,7 +17,7 @@ export const svg = (children: ReactNode) => (
   </svg>
 );
 
-const TOOLS: { type: DrawingType; label: string; key: string; icon: ReactNode }[] = [
+const TOOLS: { type: DrawingType; label: string; key?: string; icon: ReactNode }[] = [
   {
     type: 'trendline',
     label: 'Trend line',
@@ -75,6 +75,11 @@ const TOOLS: { type: DrawingType; label: string; key: string; icon: ReactNode }[
     key: 'Alt+F',
     icon: svg(<path d="M4 5h16M4 9.5h16M4 14h16M4 19h16M6 19 18 5" strokeWidth={1.3} />),
   },
+  {
+    type: 'text',
+    label: 'Text',
+    icon: svg(<path d="M6 6h12M12 6v13M9.5 19h5" strokeWidth={1.8} />),
+  },
 ];
 
 export const btn = (active: boolean) =>
@@ -112,7 +117,7 @@ export function DrawingToolbar() {
           key={t.type}
           type="button"
           data-testid={`draw-tool-${t.type}`}
-          title={`${t.label} (${t.key})`}
+          title={t.key ? `${t.label} (${t.key})` : t.label}
           aria-pressed={tool === t.type}
           onClick={() => setTool(tool === t.type ? null : t.type)}
           className={btn(tool === t.type)}

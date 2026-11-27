@@ -1,12 +1,15 @@
 import type { Candle } from '../../api/types';
 import {
   FIB_LEVELS,
+  TEXT_MAX_LENGTH,
+  TEXT_SIZES,
   type Anchor,
   type Drawing,
   type DrawingWidth,
   type Hit,
   type PixelShape,
   type Point,
+  type TextSize,
 } from './types';
 
 /**
@@ -88,8 +91,11 @@ export function hitTestShape(
       return Math.abs(y - shape.a.y) <= tol && x >= shape.a.x - tol ? 'body' : null;
     case 'long':
     case 'short':
-    case 'text':
       return null;
+    case 'text': {
+      const { a, w, h } = shape;
+      return distToBox(a.x, a.y, a.x + w, a.y + h, x, y) <= tol ? 'body' : null;
+    }
   }
   const { a, b } = shape;
   if (dist(a, x, y) <= handleTol) return 'a';
@@ -171,8 +177,11 @@ export function moveDrawing(
         : { ...d, a: { time: Math.round(to.time), price: to.price } };
     case 'long':
     case 'short':
-    case 'text':
       return d;
+    case 'text':
+      return body
+        ? { ...d, a: { time: Math.round(d.a.time + delta.dTime), price: d.a.price + delta.dPrice } }
+        : { ...d, a: { time: Math.round(to.time), price: to.price } };
     default: {
       const shift = (p: Anchor): Anchor => ({
         time: Math.round(p.time + delta.dTime),
@@ -241,6 +250,14 @@ function drawingOf(v: unknown): Drawing | null {
       if (typeof v.fill === 'number' && v.fill >= 0 && v.fill <= 1) fib.fill = v.fill;
       if (v.extend === true) fib.extend = true;
       return fib;
+    }
+    case 'text': {
+      const a = anchorOf(v.a);
+      const { text, size } = v;
+      if (!a || typeof text !== 'string' || text.trim() === '') return null;
+      if (text.length > TEXT_MAX_LENGTH) return null;
+      if (!TEXT_SIZES.some((s) => s === size)) return null;
+      return { ...base, type, a, text, size: size as TextSize };
     }
     default:
       return null;

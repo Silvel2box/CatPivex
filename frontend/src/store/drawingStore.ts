@@ -1,5 +1,14 @@
 import { create } from 'zustand';
-import type { Drawing, DrawingType, DrawingWidth } from '../chart/drawings/types';
+import {
+  DEFAULT_COLOR,
+  DEFAULT_TEXT_SIZE,
+  TEXT_MAX_LENGTH,
+  type Anchor,
+  type Drawing,
+  type DrawingType,
+  type DrawingWidth,
+  type TextSize,
+} from '../chart/drawings/types';
 
 /** Undo steps kept per symbol (Ctrl+Z). */
 export const UNDO_LIMIT = 100;
@@ -25,6 +34,7 @@ interface DrawingState {
   future: Drawing[][];
   /** Right-click menu on a drawing, at viewport coordinates. */
   menu: { id: string; x: number; y: number } | null;
+  editingText: { id: string | null; a: Anchor } | null;
 
   /** Symbol switch: clears drawings until `load` delivers them. */
   startLoading: (symbol: string) => void;
@@ -45,8 +55,17 @@ interface DrawingState {
   /** `fill` / `extend` apply to fib only. One undo step. */
   setStyle: (
     id: string,
-    style: { color?: string; width?: DrawingWidth; fill?: number; extend?: boolean },
+    style: {
+      color?: string;
+      width?: DrawingWidth;
+      fill?: number;
+      extend?: boolean;
+      size?: TextSize;
+    },
   ) => void;
+  startText: (id: string | null, a: Anchor) => void;
+  commitText: (text: string) => void;
+  cancelText: () => void;
   /** Fib: swap its anchors, so level 0 and 1 change ends. One undo step. */
   reverse: (id: string) => void;
   undo: () => void;
@@ -86,6 +105,7 @@ export const useDrawingStore = create<DrawingState>()((set) => ({
   past: [],
   future: [],
   menu: null,
+  editingText: null,
 
   startLoading: (symbol) =>
     set({
@@ -98,6 +118,7 @@ export const useDrawingStore = create<DrawingState>()((set) => ({
       past: [],
       future: [],
       menu: null,
+      editingText: null,
     }),
   load: (symbol, drawings) =>
     set((s) =>
@@ -105,7 +126,8 @@ export const useDrawingStore = create<DrawingState>()((set) => ({
         ? { loading: false, drawings, selectedId: null, past: [], future: [] }
         : {},
     ),
-  setTool: (tool) => set({ tool, measuring: false, selectedId: null, menu: null }),
+  setTool: (tool) =>
+    set({ tool, measuring: false, selectedId: null, menu: null, editingText: null }),
   select: (selectedId) => set({ selectedId }),
   add: (d) =>
     set((s) => ({
@@ -131,7 +153,8 @@ export const useDrawingStore = create<DrawingState>()((set) => ({
       ...step(s),
       drawings: s.drawings.map((x) => {
         if (x.id !== id) return x;
-        const { fill, extend, ...rest } = style;
+        const { fill, extend, size, ...rest } = style;
+        if (x.type === 'text') return { ...x, ...rest, ...(size !== undefined && { size }) };
         if (x.type !== 'fib') return { ...x, ...rest };
         const next = { ...x, ...rest, ...(fill !== undefined && { fill }) };
         if (extend === true) next.extend = true;
@@ -148,6 +171,46 @@ export const useDrawingStore = create<DrawingState>()((set) => ({
       ),
       rev: s.rev + 1,
     })),
+  startText: (id, a) => set({ editingText: { id, a }, selectedId: id, menu: null }),
+  commitText: (raw) =>
+    set((s) => {
+      const e = s.editingText;
+      if (!e) return {};
+      const text = raw.slice(0, TEXT_MAX_LENGTH);
+      const empty = text.trim() === '';
+      if (e.id === null) {
+        if (empty) return { editingText: null };
+        const d: Drawing = {
+          id: newDrawingId(),
+          type: 'text',
+          color: DEFAULT_COLOR.text,
+          width: 1,
+          a: e.a,
+          text,
+          size: DEFAULT_TEXT_SIZE,
+        };
+        return {
+          ...step(s),
+          editingText: null,
+          drawings: [...s.drawings, d],
+          selectedId: s.stayInTool ? null : d.id,
+          tool: s.stayInTool ? s.tool : null,
+          rev: s.rev + 1,
+        };
+      }
+      const old = s.drawings.find((x) => x.id === e.id);
+      if (!old || old.type !== 'text' || old.text === text) return { editingText: null };
+      return {
+        ...step(s),
+        editingText: null,
+        drawings: empty
+          ? s.drawings.filter((x) => x.id !== e.id)
+          : s.drawings.map((x) => (x.id === e.id ? { ...old, text } : x)),
+        selectedId: empty && s.selectedId === e.id ? null : s.selectedId,
+        rev: s.rev + 1,
+      };
+    }),
+  cancelText: () => set({ editingText: null }),
   undo: () =>
     set((s) => {
       const prev = s.past.at(-1);
