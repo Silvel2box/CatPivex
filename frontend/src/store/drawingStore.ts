@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { fibLevelsOf, isDefaultFibLevels, normalizeFibLevels } from '../chart/drawings/geometry';
 import type { Drawing, DrawingType, DrawingWidth } from '../chart/drawings/types';
 
 /** Undo steps kept per symbol (Ctrl+Z). */
@@ -49,6 +50,7 @@ interface DrawingState {
   ) => void;
   /** Fib: swap its anchors, so level 0 and 1 change ends. One undo step. */
   reverse: (id: string) => void;
+  setFibLevels: (id: string, levels: readonly number[]) => void;
   undo: () => void;
   redo: () => void;
   openMenu: (id: string, x: number, y: number) => void;
@@ -148,6 +150,21 @@ export const useDrawingStore = create<DrawingState>()((set) => ({
       ),
       rev: s.rev + 1,
     })),
+  setFibLevels: (id, levels) =>
+    set((s) => {
+      const next = normalizeFibLevels(levels);
+      const fib = s.drawings.find((x) => x.id === id);
+      if (!next || fib?.type !== 'fib') return {};
+      const current = fibLevelsOf(fib).map(({ level }) => level);
+      if (current.length === next.length && current.every((l, i) => l === next[i])) return {};
+      const updated: Drawing = { ...fib, levels: next };
+      if (isDefaultFibLevels(next)) delete updated.levels;
+      return {
+        ...step(s),
+        drawings: s.drawings.map((x) => (x.id === id ? updated : x)),
+        rev: s.rev + 1,
+      };
+    }),
   undo: () =>
     set((s) => {
       const prev = s.past.at(-1);

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { Drawing } from '../chart/drawings/types';
+import { FIB_LEVELS, type Drawing } from '../chart/drawings/types';
 import { UNDO_LIMIT, useDrawingStore } from './drawingStore';
 
 const st = () => useDrawingStore.getState();
@@ -99,6 +99,50 @@ describe('T4.14 undo / redo', () => {
     st().undo();
     st().undo();
     expect(st().drawings[0]).toEqual(fib('f'));
+  });
+});
+
+describe('Phase 8 setFibLevels', () => {
+  const DEFAULTS = FIB_LEVELS.map(({ level }) => level);
+
+  it('stores normalised levels in one undo step and bumps rev', () => {
+    st().add(fib('f'));
+    const { rev, past } = st();
+    st().setFibLevels('f', [1.618, 0.5, 0.5, 0.65000001, 42]);
+    expect(st().drawings[0]).toEqual({ ...fib('f'), levels: [0.5, 0.65, 1.618] });
+    expect(st().rev).toBe(rev + 1);
+    expect(st().past).toHaveLength(past.length + 1);
+    st().undo();
+    expect(st().drawings[0]).toEqual(fib('f'));
+    st().redo();
+    expect(st().drawings[0]).toEqual({ ...fib('f'), levels: [0.5, 0.65, 1.618] });
+  });
+
+  it('the default set is stored as an absent field', () => {
+    st().add(fib('f'));
+    st().setFibLevels('f', [0.5]);
+    st().setFibLevels('f', [...DEFAULTS].reverse());
+    expect(st().drawings[0]).toEqual(fib('f'));
+    expect(st().drawings[0]).not.toHaveProperty('levels');
+  });
+
+  it('rejects input with nothing valid, an unchanged set, a non-fib or an unknown id', () => {
+    st().add(fib('f'));
+    st().add(hline('h', 1));
+    st().setFibLevels('f', [0.5, 1]);
+    const before = st();
+    st().setFibLevels('f', []);
+    st().setFibLevels('f', [NaN, 99]);
+    st().setFibLevels('f', [1, 0.5, 1]);
+    st().setFibLevels('h', [0.5]);
+    st().setFibLevels('nope', [0.5]);
+    expect(st().drawings).toBe(before.drawings);
+    expect(st().past).toBe(before.past);
+    expect(st().rev).toBe(before.rev);
+    st().add(fib('g'));
+    st().setFibLevels('g', DEFAULTS);
+    expect(st().drawings.at(-1)).toEqual(fib('g'));
+    expect(st().past).toHaveLength(before.past.length + 1);
   });
 });
 

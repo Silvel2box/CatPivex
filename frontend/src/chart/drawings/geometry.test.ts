@@ -3,15 +3,26 @@ import type { Candle } from '../../api/types';
 import {
   alertLevel,
   constrainAngle,
+  fibBands,
+  fibLevelColor,
+  fibLevelsOf,
+  fibLevelValue,
   fibPrices,
   hitTestAll,
   hitTestShape,
+  isDefaultFibLevels,
   magnetSnap,
   moveDrawing,
+  normalizeFibLevels,
   sanitizeDrawings,
 } from './geometry';
 import {
+  FIB_CUSTOM_COLOR,
+  FIB_EXTRA_LEVELS,
+  FIB_LEVEL_MAX,
+  FIB_LEVEL_MIN,
   FIB_LEVELS,
+  FIB_MAX_LEVELS,
   HANDLE_TOLERANCE,
   HIT_TOLERANCE,
   type Drawing,
@@ -490,5 +501,111 @@ describe('T6.1 horizontal ray', () => {
       { ...ray, color: 'blue' },
     ];
     expect(sanitizeDrawings(bad)).toEqual([]);
+  });
+});
+
+describe('Phase 8 fib levels', () => {
+  const DEFAULTS = FIB_LEVELS.map(({ level }) => level);
+  const fib = {
+    id: 'f',
+    type: 'fib',
+    color: '#787b86',
+    width: 1,
+    a: { time: 0, price: 300 },
+    b: { time: 60, price: 100 },
+  } as const;
+
+  it('fibLevelValue: finite, rounded to 4 decimals, within the range', () => {
+    expect(fibLevelValue(0.61800004)).toBe(0.618);
+    expect(fibLevelValue(1.23456)).toBe(1.2346);
+    expect(Object.is(fibLevelValue(-0.00001), 0)).toBe(true);
+    expect(fibLevelValue(FIB_LEVEL_MIN)).toBe(FIB_LEVEL_MIN);
+    expect(fibLevelValue(FIB_LEVEL_MAX)).toBe(FIB_LEVEL_MAX);
+    for (const bad of [FIB_LEVEL_MIN - 0.01, FIB_LEVEL_MAX + 0.01, NaN, Infinity, '0.5', null]) {
+      expect(fibLevelValue(bad)).toBeNull();
+    }
+  });
+
+  it('normalizeFibLevels: drops invalid entries, rounds, dedupes, sorts, caps the count', () => {
+    expect(normalizeFibLevels([1.618, 0.5, 0.5, -0.5, 0.50001, 'x', NaN, 99, -6])).toEqual([
+      -0.5, 0.5, 1.618,
+    ]);
+    expect(normalizeFibLevels([0.618, 0.61800001, 0.6180000001])).toEqual([0.618]);
+    const many = Array.from({ length: FIB_MAX_LEVELS + 6 }, (_, i) => 9 - i * 0.25);
+    const capped = normalizeFibLevels(many)!;
+    expect(capped).toHaveLength(FIB_MAX_LEVELS);
+    expect(capped).toEqual([...capped].sort((x, y) => x - y));
+    expect(capped[0]).toBe(9 - (FIB_MAX_LEVELS + 5) * 0.25);
+    for (const bad of [[], [NaN, 'a', 11], 'x', null, undefined, { 0: 0.5 }]) {
+      expect(normalizeFibLevels(bad)).toBeNull();
+    }
+  });
+
+  it('isDefaultFibLevels matches exactly the FIB_LEVELS set', () => {
+    expect(isDefaultFibLevels(DEFAULTS)).toBe(true);
+    expect(isDefaultFibLevels(DEFAULTS.slice(1))).toBe(false);
+    expect(isDefaultFibLevels([...DEFAULTS.slice(0, -1), 1.618])).toBe(false);
+  });
+
+  it('fibLevelsOf: defaults when absent, else ascending with preset or custom colours', () => {
+    expect(fibLevelsOf({})).toEqual(FIB_LEVELS);
+    expect(fibLevelsOf({ levels: [1.618, 0.65, 0.5, -0.5] })).toEqual([
+      { level: -0.5, color: FIB_CUSTOM_COLOR },
+      { level: 0.5, color: '#4caf50' },
+      { level: 0.65, color: FIB_CUSTOM_COLOR },
+      { level: 1.618, color: '#2962ff' },
+    ]);
+    for (const { level, color } of [...FIB_LEVELS, ...FIB_EXTRA_LEVELS]) {
+      expect(fibLevelColor(level)).toBe(color);
+    }
+    expect(fibLevelColor(0.7)).toBe(FIB_CUSTOM_COLOR);
+  });
+
+  it('fibPrices follows the given levels, including extensions and negatives', () => {
+    const prices = fibPrices(fib.a, fib.b, [-0.5, 0, 1, 1.618]);
+    expect(prices[0]).toBeCloseTo(0, 9);
+    expect(prices[1]).toBe(100);
+    expect(prices[2]).toBe(300);
+    expect(prices[3]).toBeCloseTo(423.6, 9);
+    expect(fibPrices(fib.a, fib.b, [])).toEqual([]);
+  });
+
+  it('fibBands: one band between each pair of neighbouring levels, in the upper level colour', () => {
+    const levels = fibLevelsOf({ levels: [0, 0.618, 1.618] });
+    expect(fibBands(levels, [100, 38.2, -61.8])).toEqual([
+      { y: 38.2, h: 61.8, color: '#089981' },
+      { y: -61.8, h: 100, color: '#2962ff' },
+    ]);
+    expect(fibBands(fibLevelsOf({ levels: [0.5] }), [50])).toEqual([]);
+    expect(
+      fibBands(
+        fibLevelsOf({}),
+        FIB_LEVELS.map((_, i) => i * 10),
+      ),
+    ).toHaveLength(FIB_LEVELS.length - 1);
+  });
+
+  it('the hit area spans the lowest to the highest shown level', () => {
+    const levelYs = [-0.5, 0, 1, 1.618].map((level) => 100 - 100 * level);
+    const s: PixelShape = { type: 'fib', a: { x: 100, y: 0 }, b: { x: 300, y: 100 }, levelYs };
+    expect(hitTestShape(s, 200, -50, TOL)).toBe('body');
+    expect(hitTestShape(s, 200, 140, TOL)).toBe('body');
+    expect(hitTestShape(s, 200, -61.8 - TOL - 1, TOL)).toBeNull();
+    expect(hitTestShape(s, 200, 150 + TOL + 1, TOL)).toBeNull();
+  });
+
+  it('sanitizeDrawings keeps valid levels normalised and drops only an invalid field', () => {
+    expect(sanitizeDrawings([{ ...fib, levels: [1.618, 0.5, 0.5, 0.65] }])).toEqual([
+      { ...fib, levels: [0.5, 0.65, 1.618] },
+    ]);
+    expect(sanitizeDrawings([{ ...fib, levels: [0.5, 'x', 42] }])).toEqual([
+      { ...fib, levels: [0.5] },
+    ]);
+    expect(sanitizeDrawings([{ ...fib, levels: [...DEFAULTS].reverse() }])).toEqual([fib]);
+    for (const bad of [[], [NaN], 'all', { a: 1 }, null, [11, -6]]) {
+      expect(sanitizeDrawings([{ ...fib, levels: bad }])).toEqual([fib]);
+    }
+    const [t] = sanitizeDrawings([{ ...fib, type: 'trendline', levels: [0.5] }]);
+    expect(t).not.toHaveProperty('levels');
   });
 });
