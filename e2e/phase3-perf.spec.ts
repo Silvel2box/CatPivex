@@ -4,11 +4,11 @@ import { addIndicators, hook, openApp } from './phase3-helpers';
 // Headed window: headless has no real compositor, so its frame rate means nothing.
 test.use({ headless: false });
 
-test('T3.5 SMA20 + BB + RSI + MACD on 1m realtime, dragging for 5s stays ≥ 50 fps', async ({ page }) => {
+test('T3.5 SMA20 + BB + RSI + MACD + VRVP on 1m realtime, dragging for 5s stays ≥ 50 fps', async ({ page }) => {
   test.setTimeout(90_000);
   await openApp(page);
-  await addIndicators(page, ['sma', 'bb', 'rsi', 'macd']);
-  await expect.poll(() => hook(page, (h) => h.indicators().length)).toBe(4);
+  await addIndicators(page, ['sma', 'bb', 'rsi', 'macd', 'vrvp']);
+  await expect.poll(() => hook(page, (h) => h.indicators().length)).toBe(5);
 
   const box = (await page.getByTestId('chart').boundingBox())!;
   const y = box.y + box.height * 0.3;

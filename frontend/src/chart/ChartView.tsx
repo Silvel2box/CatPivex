@@ -16,6 +16,7 @@ import { INDICATORS } from './indicators';
 import { IndicatorLayer } from './indicatorSeries';
 import { setLastPriceSource } from './lastPrice';
 import { TextEditor } from './TextEditor';
+import { VolumeProfilePrimitive } from './VolumeProfilePrimitive';
 import { Legend, createLegendFeed } from './Legend';
 import {
   applyRealtimeBar,
@@ -86,8 +87,12 @@ export function ChartView() {
     layer.setInstances(useIndicatorStore.getState().instances);
     layerRef.current = layer;
 
-    // Drawings: rendered by a primitive on the candle series, edited by the controller.
     const getBars = () => liveRef.current?.bars ?? [];
+    const profiles = new VolumeProfilePrimitive(getBars, () => refreshLegendRef.current());
+    handles.candles.attachPrimitive(profiles);
+    layer.setProfileView(profiles);
+
+    // Drawings: rendered by a primitive on the candle series, edited by the controller.
     const drawings = new DrawingsPrimitive(
       getBars,
       () => INTERVAL_SECONDS[liveRef.current?.interval ?? '1m'],
@@ -164,6 +169,7 @@ export function ChartView() {
           };
         },
         indicators: () => layer.debug(),
+        volumeProfiles: () => profiles.debug(),
         indicatorSeries: (id, line) => layer.seriesData(id, line),
         xForTime: (time) => handles.chart.timeScale().timeToCoordinate(time as UTCTimestamp),
         paneCount: () => handles.chart.panes().length,

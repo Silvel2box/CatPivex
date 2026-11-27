@@ -99,7 +99,7 @@ export function indexAt<T extends { time: number }>(points: T[], time: number): 
 export function instanceLabel(def: IndicatorDef, params: Params): string {
   const text = (f: IndicatorDef['params'][number]) =>
     f.options?.find((o) => o.value === params[f.key])?.label ?? String(params[f.key]);
-  return [def.label, ...def.params.map(text)].join(' ');
+  return [def.shortLabel ?? def.label, ...def.params.map(text)].join(' ');
 }
 
 const fmt2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -124,6 +124,7 @@ export interface LegendSource {
   params: Params;
   colors: Record<string, string>;
   lines: Record<string, LinePoint[]>;
+  fixed?: Record<string, number>;
   hidden?: boolean;
 }
 
@@ -183,6 +184,11 @@ export function buildLegend(input: {
       label: instanceLabel(s.def, s.params),
       hidden: s.hidden === true,
       values: (s.hidden ? [] : s.def.lines).flatMap((l) => {
+        if (s.fixed) {
+          const f = s.fixed[l.key];
+          if (f === undefined) return [];
+          return [{ line: l.key, text: formatValue(f), color: s.colors[l.key] ?? l.color }];
+        }
         const points = s.lines[l.key] ?? [];
         const j = bar ? indexAt(points, bar.time) : -1;
         const v = j >= 0 ? points[j].value : undefined;

@@ -34,3 +34,15 @@ Incremental results must equal a full recompute (T3.2).
   - `R4`/`S4` only for Camarilla. Fixture: pandas groupby of daily candles + `shift(1)`.
 
 `gaps: true` lines: the chart shows a break (whitespace) on bars where the line has no value, instead of joining across. Lightweight Charts 5.3 joins real points across whitespace, so the point before a gap is also drawn transparent (it colours the segment that starts there). The legend leaves out a gaps line that has no value at the shown bar.
+
+## Phase 9: Volume Profile, visible range (`vrvp`, locked)
+
+Not a per-bar series: the def has `rangeOverlay: true`, its `calc` emits nothing, and the profile is computed by `volumeProfile(bars, rows, valueAreaPct)` (`volumeProfile.ts`) over the bars on screen and drawn by `VolumeProfilePrimitive` on the candle pane (`zOrder` `bottom`: below grid and candles). Params: `rows` 24 (10–200), `valueArea` 70 (5–95, step 5), `width` 30 (10–60, step 5, % of the pane width). Colours (`kind: 'profile'`, colour only, no width): `up` `#2962ff`, `down` `#fbc02d`, `poc` `#f23645`. Legend label `VRVP rows va width`; its one value is the POC price (middle of the POC row) in the POC colour.
+
+- **Bars**: indices `ceil(from) .. floor(to)` of the chart's visible logical range, clamped to `0 .. bars−1` (`visibleBarRange`); nothing visible → no profile.
+- **Rows**: `min` = lowest low, `max` = highest high of those bars, `step = (max − min)/rows`; row `j` = `[min + j·step, min + (j+1)·step]`, the top row's high is exactly `max`.
+- **Volume per row**: a bar with `high > low` adds `volume · overlap/(high − low)` to each row it overlaps (`overlap` = length of `[low, high] ∩ row`). A bar with `high == low` puts all its volume into row `min(rows−1, floor((price − min)/step))` (rows are half-open `[low, high)` except the top, which includes `max`); if every bar is flat at one price (`step = 0`) everything goes into the top row. `close ≥ open` → `up`, else `down`.
+- **POC**: the row with the largest `up + down`; a tie → the lower row.
+- **Value area**: start with the POC row; while its volume `< valueArea% · total`, add the adjacent row just above or just below the area, whichever has more volume (tie → above; one side exhausted → the other). Output `vaLow`/`vaHigh` = row indices.
+- **Drawing**: each row is a bar from the pane's right edge leftwards, length `= rowTotal / maxRowTotal · width% · paneWidth`; `up` next to the edge, `down` beyond it; alpha 0.7 inside the value area, 0.3 outside; POC = a 2 px line across the pane at the POC row's middle price. Recomputed when the visible bar indices, the last visible bar (realtime), the bars array or `rows`/`valueArea` change; checked once per chart repaint (`updateAllViews`), so at most one recompute per frame.
+- Fixture: `volume_profile_numpy` in `gen_fixtures.py` (a bars × rows overlap matrix and the same value-area walk) on fixed slices of both fixture datasets (`volumeProfiles` in the JSON; the AAPL slices include flat bars).
