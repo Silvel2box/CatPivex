@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState, type PointerEvent, type RefObject } from 'react';
 import { alertLevel } from '../chart/drawings/geometry';
-import { FIB_FILL_ALPHA, FIB_FILL_OPTIONS, type DrawingWidth } from '../chart/drawings/types';
+import {
+  FIB_FILL_ALPHA,
+  FIB_FILL_OPTIONS,
+  TEXT_SIZES,
+  type DrawingWidth,
+  type TextSize,
+} from '../chart/drawings/types';
 import { addLineAlert, alertForLine, useAlertStore } from '../store/alertStore';
 import { useDrawingStore } from '../store/drawingStore';
 import { btn, svg } from './DrawingToolbar';
@@ -29,7 +35,7 @@ export function DrawingBar({ areaRef }: { areaRef: RefObject<HTMLElement | null>
   const symbol = useDrawingStore((s) => s.symbol);
   const saved = useDrawingStore((s) => s.drawingBar);
   const alerts = useAlertStore((s) => s.alerts);
-  const { setStyle, remove, reverse, setDrawingBar } = useDrawingStore.getState();
+  const { setStyle, remove, reverse, setDrawingBar, startText } = useDrawingStore.getState();
   const barRef = useRef<HTMLDivElement>(null);
   const area = useSize(areaRef, true);
   const bar = useSize(barRef, selected !== null);
@@ -94,25 +100,53 @@ export function DrawingBar({ areaRef }: { areaRef: RefObject<HTMLElement | null>
       <input
         type="color"
         data-testid="drawing-color"
-        title="Line colour"
+        title={selected.type === 'text' ? 'Text colour' : 'Line colour'}
         value={selected.color}
         onChange={(e) => setStyle(selected.id, { color: e.target.value })}
         className="h-6 w-7 cursor-pointer rounded border border-[#2a2e39] bg-transparent p-0"
       />
-      <select
-        data-testid="drawing-width"
-        title="Line width (px)"
-        aria-label="Line width (px)"
-        value={selected.width}
-        onChange={(e) => setStyle(selected.id, { width: Number(e.target.value) as DrawingWidth })}
-        className="w-9 rounded border border-[#2a2e39] bg-[#131722] py-0.5 text-center text-[11px] text-[#d1d4dc] outline-none"
-      >
-        {WIDTHS.map((w) => (
-          <option key={w} value={w}>
-            {w}
-          </option>
-        ))}
-      </select>
+      {selected.type === 'text' ? (
+        <>
+          <select
+            data-testid="drawing-text-size"
+            title="Font size (px)"
+            aria-label="Font size (px)"
+            value={selected.size}
+            onChange={(e) => setStyle(selected.id, { size: Number(e.target.value) as TextSize })}
+            className="w-10 rounded border border-[#2a2e39] bg-[#131722] py-0.5 text-center text-[11px] text-[#d1d4dc] outline-none"
+          >
+            {TEXT_SIZES.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            data-testid="drawing-text-edit"
+            title="Edit text"
+            onClick={() => startText(selected.id, selected.a)}
+            className={btn(false)}
+          >
+            {svg(<path d="M5 19l1-4L16 5l3 3L9 18zM14 7l3 3" strokeLinejoin="round" />)}
+          </button>
+        </>
+      ) : (
+        <select
+          data-testid="drawing-width"
+          title="Line width (px)"
+          aria-label="Line width (px)"
+          value={selected.width}
+          onChange={(e) => setStyle(selected.id, { width: Number(e.target.value) as DrawingWidth })}
+          className="w-9 rounded border border-[#2a2e39] bg-[#131722] py-0.5 text-center text-[11px] text-[#d1d4dc] outline-none"
+        >
+          {WIDTHS.map((w) => (
+            <option key={w} value={w}>
+              {w}
+            </option>
+          ))}
+        </select>
+      )}
       {selected.type === 'fib' && (
         <>
           <select

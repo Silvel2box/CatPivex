@@ -15,6 +15,7 @@ import { buildLegend, withHiddenSources } from './indicatorData';
 import { INDICATORS } from './indicators';
 import { IndicatorLayer } from './indicatorSeries';
 import { setLastPriceSource } from './lastPrice';
+import { TextEditor } from './TextEditor';
 import { Legend, createLegendFeed } from './Legend';
 import {
   applyRealtimeBar,
@@ -61,6 +62,7 @@ export function ChartView() {
   const liveRef = useRef<LiveState | null>(null);
   const layerRef = useRef<IndicatorLayer | null>(null);
   const refreshLegendRef = useRef<() => void>(() => {});
+  const primitiveRef = useRef<DrawingsPrimitive | null>(null);
   const [legendFeed] = useState(createLegendFeed);
   const instances = useIndicatorStore((s) => s.instances);
   const volumeVisible = useIndicatorStore((s) => s.volumeVisible);
@@ -91,6 +93,7 @@ export function ChartView() {
       () => INTERVAL_SECONDS[liveRef.current?.interval ?? '1m'],
     );
     handles.candles.attachPrimitive(drawings);
+    primitiveRef.current = drawings;
     const controller = new DrawingController(
       containerRef.current!,
       handles.chart,
@@ -195,6 +198,7 @@ export function ChartView() {
       setLastPriceSource(null);
       handlesRef.current = null;
       layerRef.current = null;
+      primitiveRef.current = null;
       refreshLegendRef.current = () => {};
       controller.dispose();
       handles.chart.unsubscribeCrosshairMove(onCrosshair);
@@ -370,6 +374,7 @@ export function ChartView() {
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} data-testid="chart" className="h-full w-full" />
+      <TextEditor primitiveRef={primitiveRef} chartRef={containerRef} />
       <div className="pointer-events-none absolute top-2 left-2 z-10 flex max-w-[60%] flex-col items-start gap-1 text-xs">
         {delayed && (
           <span

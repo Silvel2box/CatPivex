@@ -7,12 +7,15 @@ import {
   FIB_LEVEL_MIN,
   FIB_LEVELS,
   FIB_MAX_LEVELS,
+  TEXT_MAX_LENGTH,
+  TEXT_SIZES,
   type Anchor,
   type Drawing,
   type DrawingWidth,
   type Hit,
   type PixelShape,
   type Point,
+  type TextSize,
 } from './types';
 
 /**
@@ -101,8 +104,10 @@ export function hitTestShape(
       if (dist(a, x, y) <= handleTol) return 'a';
       return distToBox(a.x, stopY, x1, targetY, x, y) <= tol ? 'body' : null;
     }
-    case 'text':
-      return null;
+    case 'text': {
+      const { a, w, h } = shape;
+      return distToBox(a.x, a.y, a.x + w, a.y + h, x, y) <= tol ? 'body' : null;
+    }
   }
   const { a, b } = shape;
   if (dist(a, x, y) <= handleTol) return 'a';
@@ -243,7 +248,9 @@ export function moveDrawing(
     case 'short':
       return movePosition(d, part, delta, to);
     case 'text':
-      return d;
+      return body
+        ? { ...d, a: { time: Math.round(d.a.time + delta.dTime), price: d.a.price + delta.dPrice } }
+        : { ...d, a: { time: Math.round(to.time), price: to.price } };
     default: {
       const shift = (p: Anchor): Anchor => ({
         time: Math.round(p.time + delta.dTime),
@@ -328,6 +335,14 @@ function drawingOf(v: unknown): Drawing | null {
         target: v.target,
       };
       return positionValid(pos) ? pos : null;
+    }
+    case 'text': {
+      const a = anchorOf(v.a);
+      const { text, size } = v;
+      if (!a || typeof text !== 'string' || text.trim() === '') return null;
+      if (text.length > TEXT_MAX_LENGTH) return null;
+      if (!TEXT_SIZES.some((s) => s === size)) return null;
+      return { ...base, type, a, text, size: size as TextSize };
     }
     default:
       return null;

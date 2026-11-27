@@ -95,6 +95,11 @@ const TOOLS: { type: DrawingType; label: string; key?: string; icon: ReactNode }
       </>,
     ),
   },
+  {
+    type: 'text',
+    label: 'Text',
+    icon: svg(<path d="M6 6h12M12 6v13M9.5 19h5" strokeWidth={1.8} />),
+  },
 ];
 
 export const btn = (active: boolean) =>

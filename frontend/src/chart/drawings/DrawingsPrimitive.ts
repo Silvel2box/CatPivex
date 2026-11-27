@@ -15,6 +15,14 @@ import { fibBands, fibLevelsOf, fibPrices, hitTestAll } from './geometry';
 import { MEASURE_FILL_ALPHA, measureColor, measureLines, measureStats } from './measure';
 import { positionLabels, type PositionLabels } from './position';
 import {
+  TEXT_BOX_PAD,
+  TEXT_LINE_HEIGHT,
+  canvasMeasure,
+  textBox,
+  textFont,
+  textLines,
+} from './text';
+import {
   FIB_FILL_ALPHA,
   HANDLE_TOLERANCE,
   HIT_TOLERANCE,
@@ -65,6 +73,8 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
   /** Where the next click would place a point (tool active, nothing clicked yet). */
   private ghost: { anchor: Anchor; color: string } | null = null;
   private measureAB: { a: Anchor; b: Anchor } | null = null;
+  private editingId: string | null = null;
+  private readonly textSizes = new WeakMap<Drawing, { w: number; h: number }>();
   /** hlines / rays with an enabled price alert (bell mark). */
   private alertLines: ReadonlySet<string> = new Set();
   private projected: Projected[] = [];
@@ -102,6 +112,7 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     hoveredId: string | null;
     ghost: { anchor: Anchor; color: string } | null;
     measure: { a: Anchor; b: Anchor } | null;
+    editingId: string | null;
   }): void {
     this.drawings = s.drawings;
     this.selectedId = s.selectedId;
@@ -109,6 +120,7 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     this.hoveredId = s.hoveredId;
     this.ghost = s.ghost;
     this.measureAB = s.measure;
+    this.editingId = s.editingId;
     this.requestUpdate?.();
   }
 
@@ -270,6 +282,9 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
           a && x1 !== null && stopY !== null && targetY !== null
             ? { type: d.type, a, x1, stopY, targetY }
             : null;
+      } else if (d.type === 'text') {
+        const a = this.point(d.a);
+        shape = a && { type: 'text', a, ...this.textSize(d) };
       } else if (!('b' in d)) {
         shape = null;
       } else {
@@ -291,6 +306,16 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
       if (shape) out.push({ id: d.id, drawing: d, shape });
     }
     return out;
+  }
+
+  private textSize(d: Extract<Drawing, { type: 'text' }>): { w: number; h: number } {
+    let box = this.textSizes.get(d);
+    if (!box) {
+      const { w, h } = textBox(d.text, d.size, canvasMeasure(d.size));
+      box = { w, h };
+      this.textSizes.set(d, box);
+    }
+    return box;
   }
 
   /**
@@ -322,6 +347,10 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
         prices.push({ coord: shape.stopY, text: price(d.stop), color: POSITION_STOP_COLOR });
         times.push({ coord: shape.a.x, text: time(d.a.time), color: d.color });
         times.push({ coord: shape.x1, text: time(d.end), color: d.color });
+      }
+      if (shape.type === 'text' && d.type === 'text') {
+        prices.push({ coord: shape.a.y, text: price(d.a.price), color: d.color });
+        times.push({ coord: shape.a.x, text: time(d.a.time), color: d.color });
       }
       if ('b' in shape && 'b' in d) {
         for (const [p, anchor] of [
@@ -367,6 +396,7 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     const items = this.projected;
     const selectedId = this.selectedId;
     const hoveredId = this.hoveredId;
+    const editingId = this.editingId;
     const ghost = this.ghostPoint();
     const ghostColor = this.ghost?.color ?? '#2962ff';
     const alertLines = this.alertLines;
@@ -451,6 +481,28 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
                 edgePill(ctx, labels.target, cx, a.y, targetY, POSITION_TARGET_COLOR);
                 edgePill(ctx, labels.stop, cx, a.y, stopY, POSITION_STOP_COLOR);
                 pill(ctx, labels.rr, cx, a.y - PILL_H / 2, d.color);
+                break;
+              }
+              case 'text': {
+                if (d.type !== 'text' || d.id === editingId) break;
+                const lh = d.size * TEXT_LINE_HEIGHT;
+                ctx.font = textFont(d.size);
+                ctx.fillStyle = d.color;
+                ctx.textBaseline = 'middle';
+                textLines(d.text).forEach((l, i) => {
+                  ctx.fillText(l, shape.a.x, shape.a.y + lh * (i + 0.5));
+                });
+                if (d.id === selectedId || d.id === hoveredId) {
+                  ctx.lineWidth = 1;
+                  ctx.setLineDash([3, 3]);
+                  ctx.strokeRect(
+                    shape.a.x - TEXT_BOX_PAD,
+                    shape.a.y - TEXT_BOX_PAD,
+                    shape.w + 2 * TEXT_BOX_PAD,
+                    shape.h + 2 * TEXT_BOX_PAD,
+                  );
+                  ctx.setLineDash([]);
+                }
                 break;
               }
             }

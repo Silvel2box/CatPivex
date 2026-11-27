@@ -109,6 +109,7 @@ export class DrawingController {
     on(window, 'mouseup', (e) => this.onUp(e));
     on(window, 'keydown', (e) => this.onKey(e));
     on(container, 'contextmenu', (e) => this.onContextMenu(e), true);
+    on(container, 'dblclick', (e) => this.onDoubleClick(e), true);
 
     let prevTool = useDrawingStore.getState().tool;
     this.cleanup.push(
@@ -142,6 +143,7 @@ export class DrawingController {
       // One readable accent for the aiming dot and its axis labels (fib's own colour is grey).
       ghost: this.ghost && s.tool ? { anchor: this.ghost, color: GHOST_COLOR } : null,
       measure: this.measure && { a: this.measure.a, b: this.measure.b },
+      editingId: s.editingText?.id ?? null,
     });
   }
 
@@ -204,6 +206,8 @@ export class DrawingController {
       this.ghost = null;
       if (this.pending) {
         this.finish(a);
+      } else if (store.tool === 'text') {
+        store.startText(null, a);
       } else if (ANCHOR_COUNT[store.tool] === 1) {
         const dy = store.tool === 'short' ? -POSITION_RISK_PX : POSITION_RISK_PX;
         const scale = {
@@ -338,15 +342,27 @@ export class DrawingController {
     store.openMenu(hit.id, e.clientX, e.clientY);
   }
 
+  private onDoubleClick(e: MouseEvent): void {
+    const store = useDrawingStore.getState();
+    const p = this.local(e);
+    if (!p || store.tool || store.measuring) return;
+    const hit = hitTestAll(this.primitive.shapes(), p.x, p.y, HIT_TOLERANCE, HANDLE_TOLERANCE);
+    const d = hit && store.drawings.find((x) => x.id === hit.id);
+    if (d?.type !== 'text') return;
+    e.stopPropagation();
+    e.preventDefault();
+    store.startText(d.id, d.a);
+  }
+
   /**
    * No button pressed. With a tool active: move the aiming dot (snapped exactly like a click
    * would be). Otherwise: highlight the drawing under the mouse. Re-render only on change.
    */
   private updateHover(e: MouseEvent): void {
-    const tool = useDrawingStore.getState().tool;
+    const { tool, editingText } = useDrawingStore.getState();
     const p = this.local(e);
     if (tool) {
-      const g = p ? this.anchorAt(p, true, tool === 'fib') : null;
+      const g = p && !editingText ? this.anchorAt(p, true, tool === 'fib') : null;
       if (g?.time === this.ghost?.time && g?.price === this.ghost?.price) return;
       this.ghost = g;
       this.render();

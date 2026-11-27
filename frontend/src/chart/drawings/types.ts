@@ -62,8 +62,8 @@ export const DEFAULT_COLOR: Record<DrawingType, string> = {
   trendline: '#2962ff',
   rect: '#9c27b0', // fill = this colour at RECT_FILL_ALPHA
   fib: '#787b86', // the a–b diagonal; level lines use FIB_LEVELS colours
-  long: '#787b86',
-  short: '#787b86',
+  long: '#2962ff',
+  short: '#2962ff',
   text: '#2962ff',
 };
 export const RECT_FILL_ALPHA = 0.2;
