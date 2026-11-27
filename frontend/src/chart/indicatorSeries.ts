@@ -30,6 +30,7 @@ import {
   type LineDef,
   type LinePoint,
 } from './indicators';
+import type { VolumeProfilePrimitive } from './VolumeProfilePrimitive';
 
 const SUB_PANE_STRETCH = 0.3; // relative to the candle pane (1)
 const LEVEL_COLOR = '#787b86';
@@ -75,6 +76,7 @@ export class IndicatorLayer {
   private daily = new Map<string, { limit: number; candles: Candle[] | null }>();
   private dailyReq: { symbol: string; limit: number; abort: AbortController } | null = null;
   private lastDay: string | null = null;
+  private profiles: VolumeProfilePrimitive | null = null;
 
   /** `run` and `fetchDaily` are injectable for tests. */
   constructor(
@@ -85,6 +87,11 @@ export class IndicatorLayer {
     this.chart = chart;
     this.run = run;
     this.fetchDaily = fetchDaily;
+  }
+
+  setProfileView(view: VolumeProfilePrimitive | null): void {
+    this.profiles = view;
+    this.syncProfiles();
   }
 
   /** Store changed: add/remove series, rerun only instances that are new or got new params. */
@@ -136,13 +143,18 @@ export class IndicatorLayer {
 
   /** Rendered instances in store order, for the legend. */
   legendSources(): LegendSource[] {
-    return this.ordered().map((e) => ({
-      id: e.inst.id,
-      def: e.def,
-      params: e.inst.params,
-      colors: e.inst.colors,
-      lines: e.run?.lines ?? {},
-    }));
+    return this.ordered().map((e) => {
+      const source: LegendSource = {
+        id: e.inst.id,
+        def: e.def,
+        params: e.inst.params,
+        colors: e.inst.colors,
+        lines: e.run?.lines ?? {},
+      };
+      if (!e.def.rangeOverlay) return source;
+      const poc = this.profiles?.pocPrice(e.inst.id) ?? null;
+      return { ...source, fixed: poc === null ? {} : { poc } };
+    });
   }
 
   debug(): IndicatorDebug[] {
@@ -151,7 +163,7 @@ export class IndicatorLayer {
       type: e.inst.type,
       params: { ...e.inst.params },
       lines: Object.fromEntries(
-        e.def.lines.map((l) => {
+        (e.def.rangeOverlay ? [] : e.def.lines).map((l) => {
           const pts = e.run?.lines[l.key] ?? [];
           const opts = e.series[l.key].options() as { lineWidth?: number };
           return [
@@ -167,7 +179,7 @@ export class IndicatorLayer {
   seriesData(id: string, key: string): { chart: SeriesItem[]; items: SeriesItem[] } {
     const e = this.entries.get(id);
     const line = e?.def.lines.find((l) => l.key === key);
-    if (!e || !line) return { chart: [], items: [] };
+    if (!e || !line || !e.series[key]) return { chart: [], items: [] };
     const plain = ({ time, value, color }: { time: unknown; value?: number; color?: string }) =>
       value === undefined
         ? { time: time as number }
@@ -215,12 +227,30 @@ export class IndicatorLayer {
         e.inst = inst;
       }
     }
+    this.syncProfiles();
     this.ensureDaily();
     return computed;
   }
 
+  private syncProfiles(): void {
+    this.profiles?.setProfiles(
+      this.ordered()
+        .filter((e) => e.def.rangeOverlay)
+        .map((e) => ({
+          id: e.inst.id,
+          rows: e.inst.params.rows,
+          valueArea: e.inst.params.valueArea,
+          width: e.inst.params.width,
+          up: this.color(e, 'up'),
+          down: this.color(e, 'down'),
+          poc: this.color(e, 'poc'),
+        })),
+    );
+  }
+
   private create(inst: IndicatorInstance): Entry {
     const def = INDICATORS[inst.type];
+    if (def.rangeOverlay) return { inst, def, series: {}, run: null };
     const main = def.pane === 'main';
     let pane = main ? 0 : this.chart.panes().length; // new pane at the bottom
     const series: Record<string, LineApi> = {};
@@ -261,6 +291,7 @@ export class IndicatorLayer {
   }
 
   private compute(e: Entry): void {
+    if (e.def.rangeOverlay) return;
     try {
       e.run = this.run(e.def.calc, e.inst.params, this.context(), this.bars);
     } catch (err) {
@@ -305,6 +336,7 @@ export class IndicatorLayer {
   }
 
   private applyStyle(e: Entry): void {
+    if (e.def.rangeOverlay) return;
     for (const line of e.def.lines) {
       const color = this.color(e, line.key);
       if (line.kind === 'histogram') {

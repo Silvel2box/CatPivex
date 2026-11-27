@@ -361,6 +361,75 @@ def supertrend_loop(h, lo, c, period, factor):
     return {"up": up, "down": down}
 
 
+def volume_profile_numpy(df: pd.DataFrame, rows: int, pct: float) -> dict:
+    """VRVP per FORMULAS.md, vectorised: bars x rows overlap matrix, then the value-area walk."""
+    h = df["high"].to_numpy(dtype=float)
+    lo = df["low"].to_numpy(dtype=float)
+    v = df["volume"].to_numpy(dtype=float)
+    pmin, pmax = lo.min(), h.max()
+    step = (pmax - pmin) / rows
+    edges = pmin + step * np.arange(rows + 1)
+    edges[-1] = pmax
+    row_lo, row_hi = edges[:-1], edges[1:]
+    span = h - lo
+    flat = span == 0
+    overlap = np.clip(np.minimum(h[:, None], row_hi[None, :]) - np.maximum(lo[:, None], row_lo[None, :]), 0, None)
+    share = np.zeros_like(overlap)
+    share[~flat] = overlap[~flat] / span[~flat, None]
+    if flat.any():
+        idx = np.minimum(np.floor((lo[flat] - pmin) / step), rows - 1).astype(int) if step > 0 else rows - 1
+        share[np.where(flat)[0], idx] = 1.0
+    vol = share * v[:, None]
+    is_up = df["close"].to_numpy(dtype=float) >= df["open"].to_numpy(dtype=float)
+    up = vol[is_up].sum(axis=0)
+    down = vol[~is_up].sum(axis=0)
+    tot = up + down
+    poc = int(np.argmax(tot))
+    a = b = poc
+    acc = tot[poc]
+    target = tot.sum() * pct / 100
+    while acc < target and (a > 0 or b < rows - 1):
+        above = tot[b + 1] if b < rows - 1 else None
+        below = tot[a - 1] if a > 0 else None
+        if above is not None and (below is None or above >= below):
+            b += 1
+            acc += above
+        else:
+            a -= 1
+            acc += below
+    return {
+        "low": row_lo.tolist(),
+        "high": row_hi.tolist(),
+        "up": up.tolist(),
+        "down": down.tolist(),
+        "poc": poc,
+        "vaLow": a,
+        "vaHigh": b,
+        "flatBars": int(flat.sum()),
+    }
+
+
+VOLUME_PROFILE_CASES = {
+    "btcusdt_1h": [(150, 24, 70), (400, 50, 68)],
+    "aapl_5m": [(300, 24, 70), (120, 80, 95)],
+}
+
+
+def volume_profile_cases(name: str, df: pd.DataFrame) -> list[dict]:
+    out = []
+    for count, rows, pct in VOLUME_PROFILE_CASES[name]:
+        start = len(df) - count
+        out.append({
+            "start": start,
+            "end": len(df) - 1,
+            "rows": rows,
+            "valueAreaPct": pct,
+            "library": "numpy overlap matrix (bars x rows) + value-area loop",
+            "expected": volume_profile_numpy(df.iloc[start:], rows, pct),
+        })
+    return out
+
+
 def main() -> None:
     refetch = "--refetch" in sys.argv
     libs = {
@@ -403,6 +472,7 @@ def main() -> None:
         assert daily["time"].is_monotonic_increasing and daily["time"].is_unique
         fixture["daily"] = {k: daily[k].tolist() for k in daily.columns}
         fixture["cases"] += pivot_cases(name, df, daily, tz, interval)
+        fixture["volumeProfiles"] = volume_profile_cases(name, df)
 
         path = OUT / f"{name}.json"
         path.write_text(json.dumps(fixture), encoding="utf-8")

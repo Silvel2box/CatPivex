@@ -13,7 +13,8 @@ export type IndicatorType =
   | 'stochrsi'
   | 'atr'
   | 'supertrend'
-  | 'pivot';
+  | 'pivot'
+  | 'vrvp';
 
 /** Values of one bar, keyed by line name. A missing key = that line is undefined at this bar. */
 export type BarValues = Record<string, number>;
@@ -65,7 +66,7 @@ export interface LineDef {
   key: string;
   label: string;
   color: string;
-  kind: 'line' | 'histogram';
+  kind: 'line' | 'histogram' | 'profile';
   gaps?: boolean;
   steps?: boolean;
 }
@@ -73,6 +74,7 @@ export interface LineDef {
 export interface IndicatorDef {
   type: IndicatorType;
   label: string;
+  shortLabel?: string;
   pane: 'main' | 'sub';
   defaults: Params;
   params: ParamField[];
@@ -82,6 +84,7 @@ export interface IndicatorDef {
   /** Hidden on 1D/1W (VWAP). */
   intradayOnly?: boolean;
   needsDaily?: boolean;
+  rangeOverlay?: boolean;
   // Method syntax in IndicatorCalc makes a calc with specific params/state assignable here.
   calc: IndicatorCalc<Params, unknown>;
 }

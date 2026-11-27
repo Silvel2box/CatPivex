@@ -16,6 +16,24 @@ export interface FixtureCase {
   lines: Record<string, FixtureLine>;
 }
 
+export interface FixtureVolumeProfile {
+  start: number;
+  end: number;
+  rows: number;
+  valueAreaPct: number;
+  library: string;
+  expected: {
+    low: number[];
+    high: number[];
+    up: number[];
+    down: number[];
+    poc: number;
+    vaLow: number;
+    vaHigh: number;
+    flatBars: number;
+  };
+}
+
 export interface Fixture {
   name: string;
   symbol: string;
@@ -24,6 +42,7 @@ export interface Fixture {
   candles: Record<keyof Candle, number[]>;
   daily?: Record<keyof Candle, number[]>;
   cases: FixtureCase[];
+  volumeProfiles?: FixtureVolumeProfile[];
 }
 
 const files = import.meta.glob<Fixture>('./*.json', { eager: true, import: 'default' });

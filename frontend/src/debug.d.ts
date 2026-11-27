@@ -1,5 +1,6 @@
 import type { Alert, Candle, Interval } from './api/types';
 import type { Drawing, DrawingType, PixelShape } from './chart/drawings/types';
+import type { ProfileDebug } from './chart/VolumeProfilePrimitive';
 
 export interface CatpivexDebugState {
   symbol: string;
@@ -37,6 +38,11 @@ export interface CatpivexDebug {
   state(): CatpivexDebugState;
   /** Rendered indicator instances (visible, not hidden by intradayOnly), in store order. */
   indicators(): CatpivexDebugIndicator[];
+  /**
+   * Visible-range volume profiles (rendered VRVP instances, store order) as computed for the
+   * current visible bars: `bars` = the bar indices/times used and the sum of their volume.
+   */
+  volumeProfiles(): ProfileDebug[];
   /**
    * One indicator line: `chart` = its series data read back from the chart (Lightweight Charts
    * leaves whitespace out), `items` = the data the layer feeds it, whitespace items without value.

@@ -9,9 +9,12 @@ import { stochCalc } from './stoch';
 import { stochrsiCalc } from './stochrsi';
 import { supertrendCalc } from './supertrend';
 import type { CalcContext, IndicatorDef, IndicatorType } from './types';
+import { noCalc } from './volumeProfile';
 import { vwapCalc } from './vwap';
 
 export { runIndicator } from './runner';
+export { visibleBarRange, volumeProfile } from './volumeProfile';
+export type { ProfileRow, VolumeProfile } from './volumeProfile';
 export type * from './types';
 
 export const INDICATORS: Record<IndicatorType, IndicatorDef> = {
@@ -191,6 +194,25 @@ export const INDICATORS: Record<IndicatorType, IndicatorDef> = {
     ],
     needsDaily: true,
     calc: pivotCalc,
+  },
+  vrvp: {
+    type: 'vrvp',
+    label: 'Volume Profile (visible range)',
+    shortLabel: 'VRVP',
+    pane: 'main',
+    defaults: { rows: 24, valueArea: 70, width: 30 },
+    params: [
+      { key: 'rows', label: 'Rows', min: 10, max: 200, step: 1 },
+      { key: 'valueArea', label: 'Value area %', min: 5, max: 95, step: 5 },
+      { key: 'width', label: 'Width %', min: 10, max: 60, step: 5 },
+    ],
+    lines: [
+      { key: 'up', label: 'Up volume', color: '#2962ff', kind: 'profile' },
+      { key: 'down', label: 'Down volume', color: '#fbc02d', kind: 'profile' },
+      { key: 'poc', label: 'POC', color: '#f23645', kind: 'profile' },
+    ],
+    rangeOverlay: true,
+    calc: noCalc,
   },
 };
 
