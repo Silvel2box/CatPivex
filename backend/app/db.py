@@ -330,18 +330,29 @@ class Database:
                 "DELETE FROM alerts WHERE symbol = ? AND drawing_id IS NOT NULL", (symbol,)
             )
 
-    def save_check(self, alert_id: int, base: Candle, armed: bool) -> bool:
-        """Writes the evaluation state only; False if the alert is gone."""
+    def save_check(
+        self, alert_id: int, base: Candle, armed: bool, price: float | None = None
+    ) -> bool:
+        """Writes the evaluation state only (+ price when given); False if the alert is gone."""
+        extra = {} if price is None else {"price": price}
         with closing(self._connect()) as conn, conn:
-            return _save_state(conn, alert_id, base, armed, {}) > 0
+            return _save_state(conn, alert_id, base, armed, extra) > 0
 
     def save_trigger(
-        self, alert_id: int, base: Candle, armed: bool, disable: bool, event: dict[str, Any]
+        self,
+        alert_id: int,
+        base: Candle,
+        armed: bool,
+        disable: bool,
+        event: dict[str, Any],
+        price: float | None = None,
     ) -> AlertEvent | None:
         """State + last_triggered_at (+ enabled = 0) and the event, atomically; None if gone."""
         extra: dict[str, Any] = {"last_triggered_at": event["time"]}
         if disable:
             extra["enabled"] = 0
+        if price is not None:
+            extra["price"] = price
         with closing(self._connect()) as conn, conn:
             if not _save_state(conn, alert_id, base, armed, extra):
                 return None

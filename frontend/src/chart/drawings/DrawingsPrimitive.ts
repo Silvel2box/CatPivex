@@ -11,7 +11,7 @@ import type {
 } from 'lightweight-charts';
 import type { Candle } from '../../api/types';
 import { logicalToTime, logicalToX, timeToLogical, xToLogical, type ScaleLike } from './coords';
-import { fibBands, fibLevelsOf, fibPrices, hitTestAll } from './geometry';
+import { fibBands, fibLevelsOf, fibPrices, hitTestAll, linePriceAt } from './geometry';
 import { MEASURE_FILL_ALPHA, measureColor, measureLines, measureStats } from './measure';
 import { positionLabels, type PositionLabels } from './position';
 import {
@@ -40,6 +40,13 @@ export interface Projected {
   id: string;
   drawing: Drawing;
   shape: PixelShape;
+}
+
+export interface TrendAlertMark {
+  id: string;
+  from: Point;
+  to: Point;
+  bell: Point | null;
 }
 
 const HANDLE_RADIUS = 5;
@@ -78,6 +85,7 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
   /** hlines / rays with an enabled price alert (bell mark). */
   private alertLines: ReadonlySet<string> = new Set();
   private projected: Projected[] = [];
+  private trendAlerts: TrendAlertMark[] = [];
   private readonly views: IPrimitivePaneView[];
   private priceLabels: AxisLabel[] = [];
   private timeLabels: AxisLabel[] = [];
@@ -134,6 +142,7 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
 
   updateAllViews(): void {
     this.projected = this.project();
+    this.trendAlerts = this.projectTrendAlerts();
     this.updateAxisLabels();
   }
 
@@ -204,9 +213,11 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     priceLabels: string[];
     timeLabels: string[];
     alertLines: string[];
+    trendAlerts: TrendAlertMark[];
   } {
     return {
       alertLines: [...this.alertLines],
+      trendAlerts: this.trendAlerts,
       hoveredId: this.hoveredId,
       ghost: this.ghost?.anchor ?? null,
       priceLabels: this.priceLabels.map((l) => l.text),
@@ -308,6 +319,30 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     return out;
   }
 
+  private projectTrendAlerts(): TrendAlertMark[] {
+    if (!this.chart || !this.series) return [];
+    const width = this.chart.timeScale().width();
+    const height = this.chart.paneSize(0).height;
+    const logical = xToLogical(this.scale(), width);
+    const edgeTime =
+      logical === null ? null : logicalToTime(logical, this.times(), this.getIntervalSec());
+    if (edgeTime === null) return [];
+    const out: TrendAlertMark[] = [];
+    for (const { drawing: d, shape } of this.projected) {
+      if (d.type !== 'trendline' || shape.type !== 'trendline' || !this.alertLines.has(d.id)) {
+        continue;
+      }
+      if (d.a.time === d.b.time) continue;
+      const price = linePriceAt(d.a, d.b, edgeTime);
+      const y = Number.isFinite(price) ? this.y(price) : null;
+      if (y === null) continue;
+      const from = d.a.time > d.b.time ? shape.a : shape.b;
+      const bell = y >= 0 && y <= height ? { x: width - BELL_INSET, y } : null;
+      out.push({ id: d.id, from, to: { x: width, y }, bell });
+    }
+    return out;
+  }
+
   private textSize(d: Extract<Drawing, { type: 'text' }>): { w: number; h: number } {
     let box = this.textSizes.get(d);
     if (!box) {
@@ -400,6 +435,7 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
     const ghost = this.ghostPoint();
     const ghostColor = this.ghost?.color ?? '#2962ff';
     const alertLines = this.alertLines;
+    const trendAlerts = this.trendAlerts;
     const measure = this.measure();
     const ma = measure && this.point(measure.a);
     const mb = measure && this.point(measure.b);
@@ -543,6 +579,20 @@ export class DrawingsPrimitive implements ISeriesPrimitive<Time> {
             if (alertY !== null && alertLines.has(d.id)) {
               bell(ctx, mediaSize.width - BELL_INSET, alertY - 9, d.color);
             }
+            ctx.restore();
+          }
+          for (const mark of trendAlerts) {
+            const d = items.find((p) => p.id === mark.id)?.drawing;
+            if (!d) continue;
+            ctx.save();
+            ctx.strokeStyle = d.color;
+            ctx.lineWidth = d.width;
+            if (mark.from.x < mark.to.x) {
+              ctx.setLineDash([6, 4]);
+              line(ctx, mark.from.x, mark.from.y, mark.to.x, mark.to.y);
+              ctx.setLineDash([]);
+            }
+            if (mark.bell) bell(ctx, mark.bell.x, mark.bell.y - 9, d.color);
             ctx.restore();
           }
           if (measure && ma && mb) {

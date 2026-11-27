@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Candle } from '../../api/types';
 import {
   alertLevel,
+  canCarryAlert,
   constrainAngle,
   fibBands,
   fibLevelColor,
@@ -484,9 +485,43 @@ describe('T6.1 horizontal ray', () => {
   });
 
   it('carries an alert at its anchor price', () => {
-    expect(alertLevel(ray)).toBe(50);
-    expect(alertLevel({ ...ray, type: 'hline', price: 7 } as Drawing)).toBe(7);
-    expect(alertLevel({ ...ray, type: 'trendline', b: ray.a } as Drawing)).toBeNull();
+    for (const t of [0, 1000, 9e9]) {
+      expect(alertLevel(ray, t)).toBe(50);
+      expect(alertLevel({ ...ray, type: 'hline', price: 7 } as Drawing, t)).toBe(7);
+      expect(alertLevel({ ...ray, type: 'hline', price: -3 } as Drawing, t)).toBe(-3);
+      expect(alertLevel({ ...ray, type: 'trendline', b: ray.a } as Drawing, t)).toBeNull();
+    }
+    expect(canCarryAlert(ray)).toBe(true);
+    expect(canCarryAlert({ ...ray, type: 'hline', price: 7 } as Drawing)).toBe(true);
+    expect(canCarryAlert({ ...ray, type: 'trendline', b: ray.a } as Drawing)).toBe(false);
+    expect(canCarryAlert({ ...ray, type: 'vline', time: 5 } as Drawing)).toBe(false);
+  });
+
+  it('a trend line carries an alert at its level, extended both ways', () => {
+    const t = {
+      id: 't1',
+      type: 'trendline',
+      color: '#2962ff',
+      width: 1,
+      a: { time: 1000, price: 100 },
+      b: { time: 2000, price: 200 },
+    } as Drawing;
+    const flipped = { ...t, a: { time: 2000, price: 200 }, b: { time: 1000, price: 100 } };
+    const falling = { ...t, a: { time: 1000, price: 200 }, b: { time: 2000, price: 100 } };
+    expect(canCarryAlert(t)).toBe(true);
+    expect(alertLevel(t, 1000)).toBe(100);
+    expect(alertLevel(t, 1500)).toBe(150);
+    expect(alertLevel(t, 2000)).toBe(200);
+    expect(alertLevel(t, 3500)).toBe(350);
+    expect(alertLevel(flipped as Drawing, 3500)).toBe(350);
+    expect(alertLevel(t, 500)).toBe(50);
+    expect(alertLevel(t, 0)).toBeNull();
+    expect(alertLevel(falling as Drawing, 2500)).toBe(50);
+    expect(alertLevel(falling as Drawing, 500)).toBe(250);
+    expect(alertLevel(falling as Drawing, 3000)).toBeNull();
+    expect(alertLevel({ ...t, b: { time: 1001, price: -Number.MAX_VALUE } } as Drawing, 5000)).toBe(
+      null,
+    );
   });
 
   it('sanitizeDrawings keeps a valid ray and drops invalid ones', () => {

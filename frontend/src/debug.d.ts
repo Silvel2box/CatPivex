@@ -71,8 +71,14 @@ export interface CatpivexDebug {
     /** Axis labels: every hline's and ray's price, plus the anchors of the selected/being-drawn drawing. */
     priceLabels: string[];
     timeLabels: string[];
-    /** hline / ray ids drawn with the alert bell. */
+    /** hline / ray / trend line ids drawn with the alert bell. */
     alertLines: string[];
+    trendAlerts: {
+      id: string;
+      from: { x: number; y: number };
+      to: { x: number; y: number };
+      bell: { x: number; y: number } | null;
+    }[];
   };
   /** The ruler on screen (being placed or finished): anchors and its two label lines. */
   measure(): {

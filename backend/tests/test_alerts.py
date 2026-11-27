@@ -10,7 +10,8 @@ from app.services.alerts import (
     check_interval,
     format_message,
     format_price,
-    hline_prices,
+    line_level,
+    line_levels,
     next_armed,
     should_fire,
     window_extremes,
@@ -64,6 +65,34 @@ def bar(t: int, high: float, low: float, close: float) -> Candle:
 )
 def test_t5_1_should_fire(condition, high, low, base_close, armed, expected):
     assert should_fire(condition, L, high, low, base_close, armed) is expected
+    assert should_fire(condition, L, high, low, base_close, armed, L) is expected
+
+
+@pytest.mark.parametrize(
+    "condition, level, base_level, high, low, base_close, expected",
+    [
+        ("crosses_below", 101, 99, 100, 100, 100, True),
+        ("crosses", 101, 99, 100, 100, 100, True),
+        ("crosses_above", 101, 99, 100, 100, 100, False),
+        ("crosses_above", 99, 101, 100, 100, 100, True),
+        ("crosses", 99, 101, 100, 100, 100, True),
+        ("crosses_below", 99, 101, 100, 100, 100, False),
+        ("crosses_below", 101, 99, 101.5, 101.5, 100, False),
+        ("crosses_above", 99, 101, 98.5, 98.5, 100, False),
+        ("crosses", 101, 100, 100, 100, 100, False),
+        ("crosses_below", 101, 99, 100, 100, None, False),
+        ("crosses_above", 105, 100, 106, 99, 99, True),
+        ("crosses_above", 105, 100, 104, 99, 99, False),
+        ("gte", 101, 99, 100, 100, 100, False),
+        ("gte", 99, 101, 100, 100, 100, True),
+        ("lte", 101, 99, 100, 100, 100, True),
+        ("lte", 99, 101, 100, 100, 100, False),
+    ],
+)
+def test_d11_should_fire_on_a_sloped_line(
+    condition, level, base_level, high, low, base_close, expected
+):
+    assert should_fire(condition, level, high, low, base_close, True, base_level) is expected
 
 
 def test_t5_1_should_fire_unknown_condition():
@@ -157,6 +186,15 @@ def test_format_message_thai_time_separators_and_note():
     assert "0.00001234" in format_message("SET:PTT", "gte", 1234567.5, 0.00001234, t, "")
 
 
+def test_d11_format_message_names_the_trend_line():
+    t = 1_764_054_180
+    msg = format_message("BINANCE:BTCUSDT", "crosses_below", 61800, 61750.5, t, "", trend=True)
+    assert msg == (
+        "🔔 BINANCE:BTCUSDT crossed below trend line 61,800.00 — now 61,750.50"
+        " · 25 Nov 14:03 (Thai time)"
+    )
+
+
 @pytest.mark.parametrize(
     ("value", "text"),
     [
@@ -182,9 +220,12 @@ def test_hline_prices():
         {"id": "h4", "type": "hline", "price": "1"},
         {"id": "h5", "type": "hline", "price": True},
         {"id": "t1", "type": "trendline", "price": 5},
+        {"id": "v1", "type": "vline", "time": 5},
         {"type": "hline", "price": 5},
     ]
-    assert hline_prices(drawings) == {"h1": 101.5, "h2": 7.0, "h3": None, "h4": None, "h5": None}
+    expected = {"h1": 101.5, "h2": 7.0, "h3": None, "h4": None, "h5": None, "t1": None}
+    assert line_levels(drawings, 0) == expected
+    assert line_levels(drawings, 1_800_000_000) == expected
 
 
 def test_hline_prices_hray():
@@ -200,7 +241,7 @@ def test_hline_prices_hray():
         {"id": "r8", "type": "hray", "a": {"time": 1}},
         {"id": "t1", "type": "trendline", "a": {**a, "price": 5}},
     ]
-    assert hline_prices(drawings) == {
+    assert line_levels(drawings, 1_700_000_000) == {
         "r1": 101.5,
         "r2": 7.0,
         "r3": None,
@@ -209,7 +250,65 @@ def test_hline_prices_hray():
         "r6": None,
         "r7": None,
         "r8": None,
+        "t1": None,
     }
+
+
+def trend(a_time, a_price, b_time, b_price, tid="t1") -> dict:
+    return {
+        "id": tid,
+        "type": "trendline",
+        "color": "#2962ff",
+        "width": 1,
+        "a": {"time": a_time, "price": a_price},
+        "b": {"time": b_time, "price": b_price},
+    }
+
+
+@pytest.mark.parametrize(
+    "line, at, expected",
+    [
+        (trend(1000, 100, 2000, 200), 1000, 100),
+        (trend(1000, 100, 2000, 200), 2000, 200),
+        (trend(1000, 100, 2000, 200), 1500, 150),
+        (trend(1000, 100, 2000, 200), 3500, 350),
+        (trend(1000, 100, 2000, 200), 500, 50),
+        (trend(2000, 200, 1000, 100), 3500, 350),
+        (trend(1000, 200, 2000, 100), 2500, 50),
+        (trend(1000, 200, 2000, 100), 500, 250),
+        (trend(1000, 200, 2000, 100), 3000, None),
+        (trend(1000, 200, 2000, 100), 3500, None),
+        (trend(1000, 100, 2000, 200), 0, None),
+        (trend(1000, 100, 1000, 200), 1000, None),
+        (trend(1000, 100, 1000, 100), 1000, None),
+        (trend(0, 1e308, 1, -1e308), 2, None),
+        (trend(1000, 100, 2000, float("nan")), 1500, None),
+        ({**trend(1000, 100, 2000, 200), "b": None}, 1500, None),
+        ({**trend(1000, 100, 2000, 200), "b": {"time": 2000}}, 1500, None),
+        ({**trend(1000, 100, 2000, 200), "b": {"time": True, "price": 2}}, 1500, None),
+        ({**trend(1000, 100, 2000, 200), "a": {"time": 1000, "price": "1"}}, 1500, None),
+        ({**trend(1000, 100, 2000, 200), "b": {"time": 10**400, "price": 2}}, 1500, None),
+    ],
+)
+def test_d11_trend_line_level(line, at, expected):
+    got = line_level(line, at)
+    assert got == (None if expected is None else pytest.approx(expected))
+
+
+def test_d11_line_levels_mixes_types_at_one_time():
+    drawings = [
+        trend(1000, 100, 2000, 200),
+        trend(1000, 100, 1000, 200, tid="t2"),
+        {"id": "h1", "type": "hline", "price": 50},
+        {"id": "r1", "type": "hray", "a": {"time": 9999, "price": 60}},
+        {
+            "id": "f1",
+            "type": "fib",
+            "a": {"time": 1000, "price": 1},
+            "b": {"time": 2000, "price": 2},
+        },
+    ]
+    assert line_levels(drawings, 3000) == {"t1": 300.0, "t2": None, "h1": 50.0, "r1": 60.0}
 
 
 # --- T5.2 trigger (fake feed + fake clock, several checks) ----------------------------------
@@ -445,3 +544,109 @@ def test_t5_2_tick_follows_the_interval_and_isolates_failures(tmp_path):
     f.clock.now = M0 + 75
     f.checker.tick()
     assert len(checked) == 6
+
+
+# --- D11 trend line alerts (TEST feed + fake clock) -----------------------------------------
+
+
+def put_lines(f: Feed, *drawings: dict) -> None:
+    r = f.client.put("/api/drawings/TEST:FOO", json={"drawings": list(drawings)})
+    assert r.status_code == 200, r.text
+
+
+def rising(dy: float = 0) -> dict:
+    return trend(M0, 90 + dy, M0 + 600, 110 + dy)
+
+
+def test_d11_rising_line_through_a_flat_price_fires_once_and_disables(tmp_path):
+    f = Feed(tmp_path)
+    f.price(95, at=M0 + 5)
+    put_lines(f, rising())
+    a = f.create(condition="crosses_below", price=1, drawing_id="t1", note="n")
+    assert a["price"] == pytest.approx(90 + 5 / 30)
+    assert f.check(M0 + 30) == 0
+    assert f.alert(a["id"])["price"] == pytest.approx(91)
+    assert f.check(M0 + 120) == 0
+    assert f.alert(a["id"])["price"] == pytest.approx(94)
+    assert f.check(M0 + 160) == 1
+    [event] = f.events()
+    assert event["level"] == pytest.approx(90 + 160 / 30)
+    assert event["price"] == 95
+    assert "TEST:FOO crossed below trend line 95.3333 — now 95.00" in event["message"]
+    assert event["message"].endswith("\nn")
+    alert = f.alert(a["id"])
+    assert alert["enabled"] is False
+    assert alert["price"] == pytest.approx(90 + 160 / 30)
+    f.price(80, 120, at=M0 + 170)
+    assert f.check(M0 + 190) == 0
+    assert len(f.events()) == 1
+
+
+def test_d11_checker_uses_the_line_at_the_base_time_for_the_side(tmp_path):
+    f = Feed(tmp_path)
+    f.price(100, at=M0 + 5)
+    put_lines(f, trend(M0, 110, M0 + 600, 90))
+    f.create(condition="crosses", price=1, drawing_id="t1", repeat=True)
+    f.price(98.5, at=M0 + 320)
+    assert f.check(M0 + 330) == 0
+    assert f.events() == []
+    f.price(100, at=M0 + 340)
+    assert f.check(M0 + 350) == 1
+    [event] = f.events()
+    assert event["level"] == pytest.approx(110 - 350 / 30)
+    assert "crossed trend line 98.3333 — now 100.00" in event["message"]
+
+
+def test_d11_line_moved_between_checks_is_followed(tmp_path):
+    f = Feed(tmp_path)
+    f.price(95, at=M0 + 5)
+    put_lines(f, rising())
+    a = f.create(condition="crosses", price=1, drawing_id="t1", repeat=True)
+    assert f.check(M0 + 30) == 0
+    f.clock.now = M0 + 40
+    put_lines(f, rising(dy=10))
+    assert f.alert(a["id"])["price"] == pytest.approx(100 + 40 / 30)
+    assert f.check(M0 + 50) == 0
+    f.price(103, at=M0 + 55)
+    assert f.check(M0 + 60) == 1
+    [event] = f.events()
+    assert event["level"] == pytest.approx(102)
+    assert "crossed trend line 102.00" in event["message"]
+
+
+def test_d11_line_deleted_or_broken_between_checks(tmp_path):
+    f = Feed(tmp_path)
+    f.price(95, at=M0 + 5)
+    put_lines(f, rising(), trend(M0, 90, M0 + 600, 110, tid="t2"))
+    a = f.create(condition="crosses_below", price=1, drawing_id="t1", repeat=True)
+    b = f.create(condition="crosses_below", price=1, drawing_id="t2", repeat=True)
+    db = f.app.state.db
+    before = {s.alert.id: s for s in db.enabled_alert_states("TEST:FOO")}
+
+    f.clock.now = M0 + 10
+    put_lines(f, trend(M0, 90, M0, 110, tid="t2"))
+    assert [x["id"] for x in f.client.get("/api/alerts").json()] == [b["id"]]
+    assert f.alert(b["id"])["price"] == pytest.approx(90 + 5 / 30)
+    f.price(80, at=M0 + 190)
+    assert f.check(M0 + 200) == 0
+    db.set_drawings("TEST:FOO", [])
+    assert f.check(M0 + 260) == 0
+    [st] = db.enabled_alert_states("TEST:FOO")
+    assert st == before[b["id"]]
+    assert f.events() == []
+    assert a["id"] in before
+
+
+def test_d11_hline_alert_ignores_time_and_keeps_its_price(tmp_path):
+    f = Feed(tmp_path)
+    f.price(95, at=M0 + 5)
+    put_lines(f, {"id": "h1", "type": "hline", "price": 100})
+    a = f.create(condition="crosses_above", price=1, drawing_id="h1")
+    assert f.check(M0 + 300) == 0
+    assert f.alert(a["id"])["price"] == 100
+    f.price(101, at=M0 + 310)
+    assert f.check(M0 + 320) == 1
+    [event] = f.events()
+    assert event["level"] == 100
+    assert "crossed above 100.00 — now 101.00" in event["message"]
+    assert "trend" not in event["message"]

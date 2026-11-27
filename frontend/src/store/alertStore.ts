@@ -7,6 +7,8 @@ import {
   updateAlert,
 } from '../api/alerts';
 import type { Alert, AlertCreate, AlertEvent, AlertUpdate } from '../api/types';
+import { alertLevel } from '../chart/drawings/geometry';
+import type { Drawing } from '../chart/drawings/types';
 import { flushDrawingSaves } from '../persist/drawingFlush';
 import { requestAlertPermission } from '../realtime/alertNotify';
 import { startPolling, type VisibilitySource } from '../realtime/poll';
@@ -223,10 +225,15 @@ export const useAlertStore = create<AlertState>()((set, get) => {
   };
 });
 
-export function addLineAlert(symbol: string, drawingId: string, price: number): void {
+export function addLineAlert(symbol: string, drawing: Drawing): void {
   requestAlertPermission();
   const store = useAlertStore.getState();
-  void store.addForLine(symbol, drawingId, price).then((created) => {
+  const price = alertLevel(drawing, Date.now() / 1000);
+  if (price === null) {
+    store.pushToast('Alert not created', 'The line is not above 0 at the current time');
+    return;
+  }
+  void store.addForLine(symbol, drawing.id, price).then((created) => {
     if (!created) store.pushToast('Alert not created', useAlertStore.getState().error ?? '');
   });
 }

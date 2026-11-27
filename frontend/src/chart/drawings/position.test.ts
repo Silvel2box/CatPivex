@@ -227,8 +227,8 @@ describe('T8.A moveDrawing on a position', () => {
   });
 
   it('carries no alert', () => {
-    expect(alertLevel(long)).toBeNull();
-    expect(alertLevel(short)).toBeNull();
+    expect(alertLevel(long, long.a.time)).toBeNull();
+    expect(alertLevel(short, short.a.time)).toBeNull();
   });
 });
 
