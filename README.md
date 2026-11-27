@@ -19,7 +19,7 @@ copy backend\.env.example backend\.env   # optional: only needed for Telegram/LI
 
 ## Price alerts
 
-Open **Alerts** in the top bar to add one (crossing, crossing up/down, ≥, ≤; once or repeat), or right-click a horizontal line → **Add alert**: that alert follows the line when you drag it and is deleted with the line. The backend checks crypto every 30 s and stocks/FX every 60 s, using the 1m high/low since the last check, so a wick that touches the level counts. Every trigger shows a browser notification with a sound (allow notifications when the browser asks) and goes to the History tab.
+Open **Alerts** in the top bar to add one (crossing, crossing up/down, ≥, ≤; once or repeat), or right-click a horizontal line, horizontal ray or trend line → **Add alert**: that alert follows the line when you drag it and is deleted with the line. A trend line alert watches the line extended to the right (drawn dashed up to the bell) and uses the line's price at the moment of each check; a steep line moving through a still price also counts as a cross. The backend checks crypto every 30 s and stocks/FX every 60 s, using the 1m high/low since the last check, so a wick that touches the level counts. Every trigger shows a browser notification with a sound (allow notifications when the browser asks) and goes to the History tab.
 
 Phone notifications are optional. Fill in either channel in `backend/.env`, restart `npm run dev`, then run `npm run notify:test`:
 
@@ -28,7 +28,7 @@ Phone notifications are optional. Fill in either channel in `backend/.env`, rest
   - Common mix-ups: the **channel access token** is about 170 characters long. The 32-character "Channel secret" on the Basic settings tab is a different value. The **user ID** starts with `U` and is 33 characters long. The 10-digit "Channel ID" is a different value. Either mix-up gives `HTTP 401` or `400` in `npm run notify:test`.
   - Messages arrive in the chat with your bot, not in your personal chat. Search your chat list for the bot's name. Some LINE versions put official-account chats in a separate folder.
 
-Known limitation: if you delete a horizontal line that has an alert and then undo (Ctrl+Z), the line comes back but its alert does not. Add the alert again.
+Known limitation: if you delete a line that has an alert and then undo (Ctrl+Z), the line comes back but its alert does not. Add the alert again.
 
 ## Run
 
@@ -119,6 +119,10 @@ Test IDs (T1.1, T1.2, …) in test names match the test list in the project trac
 - **Long / Short position**: one click places it with the stop 40 px away and the target at 2R, 20 bars wide. Drag the target, stop, entry or right-edge handles; the labels show target and stop price with %, and the risk/reward ratio. The stop and target can't cross the entry.
 - **Fibonacci levels**: select a fib, then **Levels** in the floating bar to tick which levels show (0–1 plus 1.272, 1.618, 2, 2.618, 3.618, 4.236) or type your own (−5 to 10). Saved per fib.
 - **Text**: pick the T tool, click and type. Enter saves, Shift+Enter adds a line, Esc cancels. Double-click a text (or the pencil in the floating bar) to edit it; clear it to delete. Colour and font size are in the floating bar.
+
+### Phase 9: volume profile + trend line alerts ✅ (2026-11-27)
+- **Volume Profile (visible range)** in Indicators: volume per price row for the candles on screen, drawn from the right edge (blue = up candles, yellow = down), the value area (70%) darker and the POC as a red line; the legend shows the POC price. It recalculates when you scroll or zoom. Each candle's volume is spread evenly over its high–low range (there is no lower-timeframe data), so it can differ a little from TradingView's.
+- **Alerts on trend lines**: see Price alerts above.
 
 ## Terms of use
 
