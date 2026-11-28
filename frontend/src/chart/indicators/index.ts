@@ -1,6 +1,7 @@
 import { atrCalc } from './atr';
 import { bbCalc } from './bb';
 import { emaCalc } from './ema';
+import { ichimokuCalc } from './ichimoku';
 import { macdCalc } from './macd';
 import { pivotCalc } from './pivot';
 import { rsiCalc } from './rsi';
@@ -213,6 +214,45 @@ export const INDICATORS: Record<IndicatorType, IndicatorDef> = {
     ],
     rangeOverlay: true,
     calc: noCalc,
+  },
+  ichimoku: {
+    type: 'ichimoku',
+    label: 'Ichimoku Cloud',
+    shortLabel: 'Ichimoku',
+    pane: 'main',
+    defaults: { conversion: 9, base: 26, spanB: 52, displacement: 26 },
+    params: [
+      { key: 'conversion', label: 'Conversion line length', min: 1, max: 200, step: 1 },
+      { key: 'base', label: 'Base line length', min: 1, max: 200, step: 1 },
+      { key: 'spanB', label: 'Leading span B length', min: 1, max: 400, step: 1 },
+      { key: 'displacement', label: 'Displacement', min: 1, max: 200, step: 1 },
+    ],
+    lines: [
+      { key: 'tenkan', label: 'Conversion', color: '#2962ff', kind: 'line' },
+      { key: 'kijun', label: 'Base', color: '#b71c1c', kind: 'line' },
+      {
+        key: 'lagging',
+        label: 'Lagging',
+        color: '#43a047',
+        kind: 'line',
+        offset: (p) => 1 - p.displacement,
+      },
+      {
+        key: 'leadA',
+        label: 'Leading A',
+        color: '#a5d6a7',
+        kind: 'line',
+        offset: (p) => p.displacement - 1,
+      },
+      {
+        key: 'leadB',
+        label: 'Leading B',
+        color: '#ef9a9a',
+        kind: 'line',
+        offset: (p) => p.displacement - 1,
+      },
+    ],
+    calc: ichimokuCalc,
   },
 };
 

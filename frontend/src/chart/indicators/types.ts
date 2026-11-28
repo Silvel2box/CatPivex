@@ -14,7 +14,8 @@ export type IndicatorType =
   | 'atr'
   | 'supertrend'
   | 'pivot'
-  | 'vrvp';
+  | 'vrvp'
+  | 'ichimoku';
 
 /** Values of one bar, keyed by line name. A missing key = that line is undefined at this bar. */
 export type BarValues = Record<string, number>;
@@ -69,6 +70,7 @@ export interface LineDef {
   kind: 'line' | 'histogram' | 'profile';
   gaps?: boolean;
   steps?: boolean;
+  offset?: (params: Params) => number;
 }
 
 export interface IndicatorDef {
