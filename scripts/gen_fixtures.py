@@ -215,7 +215,22 @@ def cases(df: pd.DataFrame, tz: str) -> list[dict]:
             idx = np.where(~np.isnan(st[k]))[0]
             assert len(idx) > 0 and np.any(np.diff(idx) > 1), f"supertrend {k}: no flip"
         add("supertrend", {"atrPeriod": p, "factor": f}, "numpy loop (Pine rule) over talib.ATR", st)
+    # ---- Phase 10: Ichimoku (unshifted lines) ----
+    for cv, bs, sb, dp in ((9, 26, 52, 26), (7, 22, 44, 22)):
+        params = {"conversion": cv, "base": bs, "spanB": sb, "displacement": dp}
+        add("ichimoku", params, "talib.MIDPRICE (checked vs pandas rolling max/min)", ichimoku_talib(h, lo, c, cv, bs, sb))
     return out
+
+
+def ichimoku_talib(h, lo, c, conversion, base, span_b):
+    def mid(n):
+        m = talib.MIDPRICE(h, lo, timeperiod=n)
+        ref = ((pd.Series(h).rolling(n).max() + pd.Series(lo).rolling(n).min()) / 2).to_numpy()
+        assert np.array_equal(np.isnan(m), np.isnan(ref)) and np.nanmax(np.abs(m - ref)) < 1e-9
+        return m
+
+    tenkan, kijun = mid(conversion), mid(base)
+    return {"tenkan": tenkan, "kijun": kijun, "leadA": (tenkan + kijun) / 2, "leadB": mid(span_b), "lagging": c}
 
 
 # ---------- Phase 7: pivot points (daily candles) ----------
