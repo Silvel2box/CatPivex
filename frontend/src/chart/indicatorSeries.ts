@@ -14,11 +14,14 @@ import {
   GAP_COLOR,
   activeInstances,
   indexAt,
+  shiftLine,
+  shiftUpdate,
   toSeriesData,
   toSeriesPoint,
   withGaps,
   type LegendSource,
   type SeriesItem,
+  type ShiftedLine,
 } from './indicatorData';
 import {
   INDICATORS,
@@ -30,6 +33,12 @@ import {
   type LineDef,
   type LinePoint,
 } from './indicators';
+import {
+  CloudPrimitive,
+  type CloudDebug,
+  type CloudLine,
+  type CloudSource,
+} from './CloudPrimitive';
 import type { VolumeProfilePrimitive } from './VolumeProfilePrimitive';
 
 const SUB_PANE_STRETCH = 0.3; // relative to the candle pane (1)
@@ -45,6 +54,8 @@ interface Entry {
   def: IndicatorDef;
   series: Record<string, LineApi>;
   run: IndicatorRun | null;
+  shifted: Record<string, ShiftedLine>;
+  cloud: CloudPrimitive | null;
 }
 
 export interface IndicatorDebug {
@@ -120,7 +131,9 @@ export class IndicatorLayer {
         if (!res) continue;
         for (const line of e.def.lines) {
           const v = res.values?.[line.key];
-          if (line.gaps) {
+          if (line.offset) {
+            this.updateShifted(e, line);
+          } else if (line.gaps) {
             this.updateGaps(e, line, res.time, v);
           } else if (v !== undefined) {
             const point = toSeriesPoint(
@@ -131,6 +144,7 @@ export class IndicatorLayer {
             e.series[line.key].update(asData([point])[0]);
           }
         }
+        e.cloud?.update();
       } catch (err) {
         this.fail(e, err);
         e.run = null;
@@ -149,7 +163,7 @@ export class IndicatorLayer {
         def: e.def,
         params: e.inst.params,
         colors: e.inst.colors,
-        lines: e.run?.lines ?? {},
+        lines: this.drawnLines(e),
       };
       if (!e.def.rangeOverlay) return source;
       const poc = this.profiles?.pocPrice(e.inst.id) ?? null;
@@ -164,7 +178,7 @@ export class IndicatorLayer {
       params: { ...e.inst.params },
       lines: Object.fromEntries(
         (e.def.rangeOverlay ? [] : e.def.lines).map((l) => {
-          const pts = e.run?.lines[l.key] ?? [];
+          const pts = this.points(e, l);
           const opts = e.series[l.key].options() as { lineWidth?: number };
           return [
             l.key,
@@ -187,8 +201,66 @@ export class IndicatorLayer {
     return { chart: e.series[key].data().map(plain), items: this.data(e, line).map(plain) };
   }
 
+  clouds(): ({ id: string } & CloudDebug)[] {
+    return this.ordered().flatMap((e) => {
+      const d = e.cloud?.debug();
+      return d ? [{ id: e.inst.id, ...d }] : [];
+    });
+  }
+
   private ordered(): Entry[] {
     return this.instances.flatMap((i) => this.entries.get(i.id) ?? []);
+  }
+
+  /** What a line draws on bar times: offset lines shifted, others as computed. */
+  private points(e: Entry, line: LineDef): LinePoint[] {
+    return line.offset ? (e.shifted[line.key]?.points ?? []) : (e.run?.lines[line.key] ?? []);
+  }
+
+  private drawnLines(e: Entry): Record<string, LinePoint[]> {
+    const lines = { ...e.run?.lines };
+    for (const l of e.def.lines) if (l.offset) lines[l.key] = this.points(e, l);
+    return lines;
+  }
+
+  private reshift(e: Entry): void {
+    e.shifted = {};
+    if (!e.run) return;
+    for (const l of e.def.lines) {
+      if (l.offset)
+        e.shifted[l.key] = shiftLine(e.run.lines[l.key] ?? [], this.bars, l.offset(e.inst.params));
+    }
+  }
+
+  private updateShifted(e: Entry, line: LineDef): void {
+    const s = e.shifted[line.key];
+    if (!s || !e.run || !line.offset) return;
+    const op = shiftUpdate(s, e.run.lines[line.key] ?? [], this.bars, line.offset(e.inst.params));
+    const series = e.series[line.key];
+    if (op === 'update' && !line.gaps) {
+      const last = s.points[s.points.length - 1];
+      series.update(asData([toSeriesPoint(line.kind, last, this.color(e, line.key))])[0]);
+    } else if (op !== 'none') {
+      series.setData(this.data(e, line));
+    }
+  }
+
+  private cloudSource(e: Entry): CloudSource | null {
+    const keys = e.def.cloud;
+    if (!keys || !e.run) return null;
+    const line = (key: string): CloudLine | null => {
+      const def = e.def.lines.find((l) => l.key === key);
+      if (!def) return null;
+      return {
+        points: this.points(e, def),
+        future: e.shifted[key]?.future ?? [],
+        color: this.color(e, key),
+        width: this.width(e, key),
+      };
+    };
+    const a = line(keys[0]);
+    const b = line(keys[1]);
+    return a && b ? { bars: this.bars, a, b } : null;
   }
 
   private color(e: Entry, line: string): string {
@@ -205,6 +277,7 @@ export class IndicatorLayer {
     const keep = new Set(active.map((i) => i.id));
     for (const [id, e] of this.entries) {
       if (keep.has(id)) continue;
+      if (e.cloud) e.series[e.def.cloud![0]].detachPrimitive(e.cloud);
       for (const s of Object.values(e.series)) this.chart.removeSeries(s);
       this.entries.delete(id);
     }
@@ -250,7 +323,7 @@ export class IndicatorLayer {
 
   private create(inst: IndicatorInstance): Entry {
     const def = INDICATORS[inst.type];
-    if (def.rangeOverlay) return { inst, def, series: {}, run: null };
+    if (def.rangeOverlay) return { inst, def, series: {}, run: null, shifted: {}, cloud: null };
     const main = def.pane === 'main';
     let pane = main ? 0 : this.chart.panes().length; // new pane at the bottom
     const series: Record<string, LineApi> = {};
@@ -287,7 +360,12 @@ export class IndicatorLayer {
         axisLabelVisible: false,
       });
     }
-    return { inst, def, series, run: null };
+    const entry: Entry = { inst, def, series, run: null, shifted: {}, cloud: null };
+    if (def.cloud) {
+      entry.cloud = new CloudPrimitive(() => this.cloudSource(entry));
+      series[def.cloud[0]].attachPrimitive(entry.cloud);
+    }
+    return entry;
   }
 
   private compute(e: Entry): void {
@@ -298,11 +376,13 @@ export class IndicatorLayer {
       e.run = null;
       this.fail(e, err);
     }
+    this.reshift(e);
     this.setAll(e);
   }
 
   private setAll(e: Entry): void {
     for (const line of e.def.lines) e.series[line.key].setData(this.data(e, line));
+    e.cloud?.update();
   }
 
   /** Realtime counterpart of withGaps: whitespace or the value at `time`, and the break colour. */
@@ -330,7 +410,7 @@ export class IndicatorLayer {
   }
 
   private data(e: Entry, line: LineDef): ReturnType<typeof asData> {
-    const points = toSeriesData(line.kind, e.run?.lines[line.key] ?? [], this.color(e, line.key));
+    const points = toSeriesData(line.kind, this.points(e, line), this.color(e, line.key));
     const times = line.gaps ? this.bars.map((b) => b.time) : null;
     return asData(times ? withGaps(line.kind, points, times, line.steps) : points);
   }
@@ -346,6 +426,7 @@ export class IndicatorLayer {
         e.series[line.key].applyOptions({ color, lineWidth: this.width(e, line.key) });
       }
     }
+    e.cloud?.update();
   }
 
   private context(): CalcContext {

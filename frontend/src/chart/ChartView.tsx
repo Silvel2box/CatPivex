@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { LogicalRange, MouseEventParams, UTCTimestamp } from 'lightweight-charts';
+import type { Logical, LogicalRange, MouseEventParams, UTCTimestamp } from 'lightweight-charts';
 import { fetchCandles } from '../api/client';
 import { INTERVAL_SECONDS, type Candle, type CandlesResponse, type Interval } from '../api/types';
 import { connectKlineStream, klineStreamUrl } from '../realtime/binanceWs';
@@ -170,8 +170,10 @@ export function ChartView() {
         },
         indicators: () => layer.debug(),
         volumeProfiles: () => profiles.debug(),
+        ichimokuClouds: () => layer.clouds(),
         indicatorSeries: (id, line) => layer.seriesData(id, line),
         xForTime: (time) => handles.chart.timeScale().timeToCoordinate(time as UTCTimestamp),
+        xForLogical: (logical) => handles.chart.timeScale().logicalToCoordinate(logical as Logical),
         paneCount: () => handles.chart.panes().length,
         drawings: () => {
           const s = useDrawingStore.getState();

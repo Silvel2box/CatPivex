@@ -9,6 +9,7 @@ import type {
   Time,
 } from 'lightweight-charts';
 import type { Candle } from '../api/types';
+import { withAlpha } from './indicatorData';
 import { visibleBarRange, volumeProfile, type ProfileRow, type VolumeProfile } from './indicators';
 
 export interface ProfileSpec {
@@ -50,11 +51,6 @@ interface Projected {
 const IN_VA_ALPHA = 0.7;
 const OUT_VA_ALPHA = 0.3;
 const POC_WIDTH = 2;
-
-function withAlpha(hex: string, alpha: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
-}
 
 export class VolumeProfilePrimitive implements ISeriesPrimitive<Time> {
   private chart: IChartApi | null = null;

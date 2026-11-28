@@ -87,6 +87,8 @@ export interface IndicatorDef {
   intradayOnly?: boolean;
   needsDaily?: boolean;
   rangeOverlay?: boolean;
+  /** Filled between these two lines: the first one's colour where it is ≥ the second, else the second's. */
+  cloud?: [string, string];
   // Method syntax in IndicatorCalc makes a calc with specific params/state assignable here.
   calc: IndicatorCalc<Params, unknown>;
 }

@@ -19,6 +19,11 @@ export function activeInstances(
   return instances.filter((i) => i.visible && !(defs[i.type].intradayOnly && isDaily(interval)));
 }
 
+export function withAlpha(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
 /** MACD-style histogram: the line colour at/above zero, red below. */
 export function histColor(value: number, upColor: string): string {
   return value >= 0 ? upColor : HIST_DOWN;
@@ -93,6 +98,90 @@ export function indexAt<T extends { time: number }>(points: T[], time: number): 
     else hi = mid - 1;
   }
   return -1;
+}
+
+/** First index whose time is ≥ `time` (points.length if none). */
+export function lowerBound<T extends { time: number }>(points: T[], time: number): number {
+  let lo = 0;
+  let hi = points.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (points[mid].time < time) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+export interface FuturePoint {
+  logical: number;
+  value: number;
+}
+
+/** A line drawn `k` bars to the right (k < 0: left): `points` on bar times, `future` past the last bar. */
+export interface ShiftedLine {
+  points: LinePoint[];
+  future: FuturePoint[];
+}
+
+/** Appends the shifted points whose source bar index is ≥ `src`; returns how many landed in data. */
+function pushShifted(
+  s: ShiftedLine,
+  points: LinePoint[],
+  bars: { time: number }[],
+  k: number,
+  src: number,
+): number {
+  const n = bars.length;
+  let i = Math.max(0, src);
+  if (i >= n) return 0;
+  let added = 0;
+  for (let j = lowerBound(points, bars[i].time); j < points.length; j++) {
+    const p = points[j];
+    while (i < n && bars[i].time < p.time) i++;
+    if (i === n) break;
+    if (bars[i].time !== p.time) continue;
+    const t = i + k;
+    if (t < 0) continue;
+    if (t < n) {
+      s.points.push({ time: bars[t].time, value: p.value });
+      added++;
+    } else {
+      s.future.push({ logical: t, value: p.value });
+    }
+  }
+  return added;
+}
+
+/** The point at bar `i` is drawn at bar `i + k`; before bar 0 → dropped, past the last bar → `future`. */
+export function shiftLine(points: LinePoint[], bars: { time: number }[], k: number): ShiftedLine {
+  const s: ShiftedLine = { points: [], future: [] };
+  pushShifted(s, points, bars, k, 0);
+  return s;
+}
+
+/**
+ * Realtime bar (last bar replaced or one appended, `points` already updated): redoes the tail of
+ * `s` in place. 'update' = the last in-data point is new or changed, 'set' = anything else changed.
+ */
+export function shiftUpdate(
+  s: ShiftedLine,
+  points: LinePoint[],
+  bars: { time: number }[],
+  k: number,
+): 'none' | 'update' | 'set' {
+  const n = bars.length;
+  if (n === 0) return 'none';
+  const from = Math.max(0, n - 1 + Math.min(k, 0));
+  const removed: LinePoint[] = [];
+  while (s.points.length && s.points[s.points.length - 1].time >= bars[from].time)
+    removed.push(s.points.pop()!);
+  s.future.length = 0;
+  const added = pushShifted(s, points, bars, k, from - k);
+  if (removed.length === 0) return added === 0 ? 'none' : added === 1 ? 'update' : 'set';
+  if (removed.length > 1 || added !== 1) return 'set';
+  const last = s.points[s.points.length - 1];
+  if (last.time !== removed[0].time) return 'set';
+  return last.value === removed[0].value ? 'none' : 'update';
 }
 
 /** `SMA 20`, `MACD 12 26 9`, `VWAP`, `Pivot Points Standard Auto`. */
