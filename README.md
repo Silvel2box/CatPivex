@@ -124,6 +124,9 @@ Test IDs (T1.1, T1.2, …) in test names match the test list in the project trac
 - **Volume Profile (visible range)** in Indicators: volume per price row for the candles on screen, drawn from the right edge (blue = up candles, yellow = down), the value area (70%) darker and the POC as a red line; the legend shows the POC price. It recalculates when you scroll or zoom. Each candle's volume is spread evenly over its high–low range (there is no lower-timeframe data), so it can differ a little from TradingView's.
 - **Alerts on trend lines**: see Price alerts above.
 
+### Phase 10: Ichimoku Cloud ✅ (2026-11-28)
+- **Ichimoku Cloud** in Indicators (TradingView defaults 9 / 26 / 52 / 26): conversion and base lines, the lagging span drawn 25 bars back, and leading spans A and B drawn 25 bars ahead with the cloud between them (green where A ≥ B, red below; it takes the span colours from the settings). The cloud runs past the last candle: drag the chart left to see the part ahead.
+
 ## Terms of use
 
 CatPivex is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE.md).
