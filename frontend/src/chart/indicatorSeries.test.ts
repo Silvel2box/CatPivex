@@ -23,6 +23,9 @@ function fakeChart() {
     opts: Record<string, unknown>;
     data: { time: number; value: number; color?: string }[];
     updates: { time: number; value: number; color?: string; historical?: boolean }[];
+    live: { time: number; value?: number; color?: string }[];
+    sets: number;
+    primitives: unknown[];
     priceLines: number[];
     setData(d: FakeSeries['data']): void;
     update(p: FakeSeries['data'][number], historical?: boolean): void;
@@ -30,6 +33,8 @@ function fakeChart() {
     options(): Record<string, unknown>;
     createPriceLine(o: { price: number }): void;
     getPane(): { paneIndex(): number };
+    attachPrimitive(p: unknown): void;
+    detachPrimitive(p: unknown): void;
   }
   const paneApi = (pane: FakeSeries[]) => ({
     paneIndex: () => panes.indexOf(pane),
@@ -43,12 +48,21 @@ function fakeChart() {
         opts,
         data: [],
         updates: [],
+        live: [],
+        sets: 0,
+        primitives: [],
         priceLines: [],
         setData(d) {
           s.data = d;
+          s.live = [...d];
+          s.sets++;
         },
         update(p, historical) {
           s.updates.push(historical ? { ...p, historical } : p);
+          const i = s.live.findIndex((q) => q.time === p.time);
+          if (i >= 0) s.live[i] = p;
+          else if (p.time > (s.live[s.live.length - 1]?.time ?? -Infinity)) s.live.push(p);
+          else throw new Error('update older than the last point');
         },
         applyOptions(o) {
           Object.assign(s.opts, o);
@@ -58,6 +72,12 @@ function fakeChart() {
           s.priceLines.push(o.price);
         },
         getPane: () => paneApi(pane),
+        attachPrimitive(p) {
+          s.primitives.push(p);
+        },
+        detachPrimitive(p) {
+          s.primitives.splice(s.primitives.indexOf(p), 1);
+        },
       };
       pane.push(s);
       return s;
@@ -469,5 +489,103 @@ describe('steps lines realtime', () => {
       { time: 120, value: 5, color: GAP_COLOR, historical: true },
       { time: 180, value: 7 },
     ]);
+  });
+});
+
+describe('I6 Ichimoku offset lines and cloud (fake chart, real runner)', () => {
+  const P = { conversion: 3, base: 5, spanB: 8, displacement: 6 };
+  const series = (n: number, seed = 5): Candle[] => {
+    let x = seed;
+    let price = 50;
+    return Array.from({ length: n }, (_, i) => {
+      x = (x * 16807) % 2147483647;
+      price += (x / 2147483647 - 0.5) * 3;
+      return bar(1000 + i * 60, price - 0.4, price);
+    });
+  };
+  const setup = (bars: Candle[], params: Params = P) => {
+    const { chart, panes } = fakeChart();
+    const layer = new IndicatorLayer(chart);
+    layer.setSource('BINANCE:BTCUSDT', '1m', bars);
+    const ichi = { ...inst('i', 'ichimoku', params), colors: { leadA: '#00ff00' } };
+    layer.setInstances([ichi]);
+    const [tenkan, kijun, lagging, leadA, leadB] = panes[0];
+    return { layer, panes, ichi, s: { tenkan, kijun, lagging, leadA, leadB } };
+  };
+
+  it('feeds the shifted in-data points; lagging back, leads forward; legend and debug follow', () => {
+    const bars = series(40);
+    const n = bars.length;
+    const { layer, s } = setup(bars);
+    const raw = runIndicator(INDICATORS.ichimoku.calc, P, { dayKey: () => 'd' }, bars).lines;
+    expect(s.tenkan.data).toEqual(raw.tenkan);
+    expect(s.lagging.data[s.lagging.data.length - 1]).toEqual({
+      time: bars[n - 6].time,
+      value: bars[n - 1].close,
+    });
+    expect(s.lagging.data[0]).toEqual({ time: bars[0].time, value: bars[5].close });
+    expect(s.leadA.data[0]).toEqual({ time: bars[4 + 5].time, value: raw.leadA[0].value });
+    expect(s.leadB.data[0]).toEqual({ time: bars[7 + 5].time, value: raw.leadB[0].value });
+    expect(s.leadA.data[s.leadA.data.length - 1]).toEqual({
+      time: bars[n - 1].time,
+      value: raw.leadA.find((p) => p.time === bars[n - 6].time)!.value,
+    });
+
+    const [src] = layer.legendSources();
+    expect(src.lines.leadA).toEqual(s.leadA.data);
+    expect(src.lines.tenkan).toEqual(raw.tenkan);
+    const d = layer.debug()[0].lines;
+    expect(d.leadA.count).toBe(s.leadA.data.length);
+    expect(d.lagging.last).toEqual(s.lagging.data[s.lagging.data.length - 1]);
+  });
+
+  it('cloud: attached to leadA, extends displacement − 1 bars right; colours from the store', () => {
+    const bars = series(40);
+    const { layer, s, ichi } = setup(bars);
+    expect(s.leadA.primitives).toHaveLength(1);
+    const [c] = layer.clouds();
+    expect(c).toMatchObject({ id: 'i', from: 7 + 5, to: 39 + 5, futureBars: 5 });
+    expect(c.future.map((f) => f.logical)).toEqual([40, 41, 42, 43, 44]);
+    expect(c.futureLines).toEqual({ a: 6, b: 6 });
+    expect(c.segments.some((g) => g.up) && c.segments.some((g) => !g.up)).toBe(true);
+    for (const g of c.segments) {
+      expect(g.fill).toBe(g.up ? 'rgba(0, 255, 0, 0.25)' : 'rgba(239, 154, 154, 0.25)');
+    }
+
+    layer.setInstances([{ ...ichi, colors: { leadA: '#00ff00', leadB: '#0000ff' } }]);
+    for (const g of layer.clouds()[0].segments) {
+      expect(g.fill).toBe(g.up ? 'rgba(0, 255, 0, 0.25)' : 'rgba(0, 0, 255, 0.25)');
+    }
+
+    layer.setInstances([{ ...ichi, params: { ...P, displacement: 10 } }]);
+    expect(layer.clouds()[0]).toMatchObject({ from: 7 + 9, to: 39 + 9, futureBars: 9 });
+    expect(s.leadA.data[0].time).toBe(bars[4 + 9].time);
+    expect(s.lagging.data[s.lagging.data.length - 1].time).toBe(bars[39 - 9].time);
+
+    layer.setInstances([{ ...ichi, visible: false }]);
+    expect(s.leadA.primitives).toHaveLength(0);
+    expect(layer.clouds()).toEqual([]);
+  });
+
+  it('realtime ticks: series end up equal to a full run, by update() only (no setData)', () => {
+    const all = series(70, 9);
+    const live = all.slice(0, 30);
+    const { layer, s } = setup(live);
+    const tick = (b: Candle) => {
+      applyRealtimeBar(live, b);
+      layer.update(b);
+    };
+    for (let i = 29; i < all.length; i++) {
+      const b = all[i];
+      tick({ ...b, close: b.open, high: b.open + 0.1, low: b.open - 0.1 });
+      tick({ ...b, high: b.high + 5, close: b.high + 4 });
+      tick(b);
+    }
+    const fresh = setup(all.slice());
+    for (const k of ['tenkan', 'kijun', 'lagging', 'leadA', 'leadB'] as const) {
+      expect(s[k].live).toEqual(fresh.s[k].data);
+      expect(s[k].sets).toBe(1);
+    }
+    expect(layer.clouds()).toEqual(fresh.layer.clouds());
   });
 });

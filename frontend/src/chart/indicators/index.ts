@@ -252,6 +252,7 @@ export const INDICATORS: Record<IndicatorType, IndicatorDef> = {
         offset: (p) => p.displacement - 1,
       },
     ],
+    cloud: ['leadA', 'leadB'],
     calc: ichimokuCalc,
   },
 };

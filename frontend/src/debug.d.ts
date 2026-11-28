@@ -1,5 +1,6 @@
 import type { Alert, Candle, Interval } from './api/types';
 import type { Drawing, DrawingType, PixelShape } from './chart/drawings/types';
+import type { CloudDebug } from './chart/CloudPrimitive';
 import type { ProfileDebug } from './chart/VolumeProfilePrimitive';
 
 export interface CatpivexDebugState {
@@ -44,6 +45,13 @@ export interface CatpivexDebug {
    */
   volumeProfiles(): ProfileDebug[];
   /**
+   * Clouds (Ichimoku) of the rendered instances, over all bars: `from`/`to` = first/last logical
+   * (bar) index where both lines have a value, past the last bar = future; `futureBars` = cloud
+   * bars right of the last candle; `segments` = same-colour runs split at crossings; `future` =
+   * the future samples; `futureLines` = points of each line's drawn future part.
+   */
+  ichimokuClouds(): ({ id: string } & CloudDebug)[];
+  /**
    * One indicator line: `chart` = its series data read back from the chart (Lightweight Charts
    * leaves whitespace out), `items` = the data the layer feeds it, whitespace items without value.
    * A point before a gap carries color 'transparent' (the chart would join across whitespace).
@@ -57,6 +65,8 @@ export interface CatpivexDebug {
   };
   /** x of a bar time relative to the chart container, null when off-screen / unknown. */
   xForTime(time: number): number | null;
+  /** x of a logical (bar) index, extrapolated past the last bar. */
+  xForLogical(logical: number): number | null;
   /** Chart panes: 1 (candles + main-pane indicators) + one per sub-pane indicator. */
   paneCount(): number;
   /** Drawing store + current pixel shapes (pane px) of the drawings in draw order. */
